@@ -1,0 +1,68 @@
+# Resolve react_native_pods.rb with node to allow for hoisting
+require Pod::Executable.execute_command(
+  'node',
+  [
+    '-p',
+    'require.resolve(
+      "react-native/scripts/react_native_pods.rb",
+      {paths: [process.argv[1]]},
+    )',
+    __dir__
+  ]
+).strip
+
+platform :ios, '15.1'
+
+prepare_react_native_project!
+
+linkage = ENV['USE_FRAMEWORKS']
+
+if linkage != nil
+  Pod::UI.puts "Configuring Pod with #{linkage}ally linked Frameworks".green
+  use_frameworks! :linkage => linkage.to_sym
+end
+
+target 'WatchPartyLive' do
+
+  config = use_native_modules!
+
+  use_react_native!(
+    :path => config[:reactNativePath],
+    :app_path => "#{Pod::Config.instance.installation_root}/.."
+  )
+
+  post_install do |installer|
+
+    react_native_post_install(
+      installer,
+      config[:reactNativePath],
+      :mac_catalyst_enabled => false,
+    )
+
+    # ====================================================================
+    # FIX: fmt 11.0.2 consteval build error with Xcode 26 / Apple Clang 21
+    #
+    # Root cause: fmt 11 sets FMT_USE_CONSTEVAL=1 when __cpp_consteval is
+    # defined (C++20). Xcode 26's Clang is stricter about consteval and
+    # rejects fmt's compile-time format string checks.
+    #
+    # Fix: Compile the fmt pod against C++17. Since consteval doesn't exist
+    # in C++17, __cpp_consteval is undefined and fmt falls back to runtime
+    # format checking. This is a tiny, scoped, well-known workaround.
+    #
+    # Refs:
+    #   - github.com/facebook/react-native/issues/55601
+    #   - github.com/fmtlib/fmt/issues/4740
+    # ====================================================================
+    installer.pods_project.targets.each do |target|
+      if target.name == 'fmt'
+        target.build_configurations.each do |config|
+          config.build_settings['CLANG_CXX_LANGUAGE_STANDARD'] = 'c++17'
+          config.build_settings['GCC_C_LANGUAGE_STANDARD'] = 'gnu11'
+        end
+      end
+    end
+
+  end
+
+end

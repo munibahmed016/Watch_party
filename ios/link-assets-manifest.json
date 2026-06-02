@@ -1,0 +1,41 @@
+{
+  "migIndex": 1,
+  "data": [
+    {
+      "path": "src/assets/fonts/Outfit-Medium.ttf",
+      "sha1": "9d7db2e6a458135b81b68078a7f4863fa17c2024"
+    },
+    {
+      "path": "src/assets/fonts/Outfit-Regular.ttf",
+      "sha1": "06a8de7221f96cdce3e90e32444f1db7897b479a"
+    },
+    {
+      "path": "src/assets/fonts/Outfit-SemiBold.ttf",
+      "sha1": "187a51467f6faeab3853f62a38c729817a938bc0"
+    },
+    {
+      "path": "src/assets/fonts/SchibstedGrotesk-Italic[wght].ttf",
+      "sha1": "686be2077cdd0679fe453757b0894ba5ccbcd844"
+    },
+    {
+      "path": "src/assets/fonts/SchibstedGrotesk[wght].ttf",
+      "sha1": "0e38c6be15eb1e9eaf67724b99d4b4e3c502f769"
+    },
+    {
+      "path": "src/assets/fonts/SecularOne-Regular.ttf",
+      "sha1": "f6fe34df180c755f4ec5182397fabf72f1e3c9f9"
+    },
+    {
+      "path": "src/assets/fonts/Syne-Bold.ttf",
+      "sha1": "cf1ca50ac9e42e99282627b4e116f0d684cd9c28"
+    },
+    {
+      "path": "src/assets/fonts/Syne-ExtraBold.ttf",
+      "sha1": "6bac690649692864107a4edffb0059d73963b6bd"
+    },
+    {
+      "path": "src/assets/fonts/Syne-Regular.ttf",
+      "sha1": "a23691085505af89f0c4212d691a95c7923ee4c7"
+    }
+  ]
+}
