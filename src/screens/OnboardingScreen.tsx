@@ -27,8 +27,8 @@ const OnboardingScreen = () => {
         <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
           <View style={{ flex: 1 }} />
           <View style={styles.bottom}>
-            <AppText variant="h1" bold center style={styles.title}>
-              Start Streaming Now{'\n'}with WatchPartyLive
+            <AppText variant="h2" bold center style={styles.title}>
+              Start Streaming Now with{'\n'}WatchPartyLive
             </AppText>
 
             <GradientButton

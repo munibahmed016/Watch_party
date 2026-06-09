@@ -1,21 +1,16 @@
-// src/screens/CreateAccountScreen.tsx
 import React, { useState } from 'react';
 import {
-  View,
-  StyleSheet,
-  TouchableOpacity,
-  KeyboardAvoidingView,
-  Platform,
-  ScrollView,
+  View, StyleSheet, TouchableOpacity, KeyboardAvoidingView, Platform, ScrollView,
 } from 'react-native';
 import LinearGradient from 'react-native-linear-gradient';
 import FAIcon from 'react-native-vector-icons/FontAwesome';
 import { useNavigation } from '@react-navigation/native';
 import ScreenContainer from '@/components/ScreenContainer';
-import AppHeader from '@/components/AppHeader';
+import BrandHeader from '@/components/BrandHeader';
 import AppText from '@/components/AppText';
 import AppInput from '@/components/AppInput';
-import GradientButton from '@/components/GradientButton';
+import AppButton from '@/components/AppButton';
+import GradientText from '@/components/GradientText';
 import colors from '@/constants/colors';
 import spacing from '@/constants/spacing';
 import { authApi } from '@/lib/api';
@@ -26,8 +21,8 @@ const SocialBtn: React.FC<{ icon: React.ReactNode; onPress?: () => void }> = ({ 
   <TouchableOpacity onPress={onPress} activeOpacity={0.85}>
     <LinearGradient
       colors={colors.buttonGradient as unknown as string[]}
-      start={{ x: 0, y: 0 }}
-      end={{ x: 1, y: 1 }}
+      start={colors.gradientStartPoint}
+      end={colors.gradientEndPoint}
       style={styles.socialBtn}>
       <View style={styles.socialInner}>{icon}</View>
     </LinearGradient>
@@ -37,7 +32,6 @@ const SocialBtn: React.FC<{ icon: React.ReactNode; onPress?: () => void }> = ({ 
 const CreateAccountScreen = () => {
   const navigation = useNavigation<any>();
   const { setSession } = useAuth();
-
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
   const [password, setPassword] = useState('');
@@ -48,7 +42,6 @@ const CreateAccountScreen = () => {
     if (!email.trim()) return showApiError(new Error('Please enter your email.'));
     if (password.length < 8) return showApiError(new Error('Password must be at least 8 characters.'));
     if (password !== confirm) return showApiError(new Error('Passwords do not match.'));
-
     setLoading(true);
     try {
       const { user, accessToken, refreshToken } = await authApi.register({
@@ -68,12 +61,23 @@ const CreateAccountScreen = () => {
 
   return (
     <ScreenContainer>
-      <AppHeader />
+      <BrandHeader
+        infoTitle="Creating your account"
+        infoIntro="Join WatchPartyLive to host synced watch parties with friends. It only takes a minute."
+        infoPoints={[
+          { icon: 'mail', title: 'Email & phone', text: 'We use these to secure your account and help friends find you.' },
+          { icon: 'lock-closed', title: 'Strong password', text: 'Use at least 8 characters. Mix letters, numbers and symbols for safety.' },
+          { icon: 'logo-google', title: 'Social sign up', text: 'Prefer one tap? Sign up with Apple, Google, or Facebook instead.' },
+        ]}
+      />
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
-          <AppText variant="h1" bold center style={{ marginBottom: spacing.lg }}>
-            Create Account
-          </AppText>
+          <View style={styles.titleWrap}>
+            <GradientText variant="h1" center style={styles.title}>Create Account</GradientText>
+            <AppText variant="small" color={colors.textSecondary} center style={{ marginTop: 4 }}>
+              Start streaming together in minutes.
+            </AppText>
+          </View>
 
           <AppInput placeholder="Your Email" value={email} onChangeText={setEmail}
             keyboardType="email-address" autoCapitalize="none" autoCorrect={false}
@@ -85,8 +89,13 @@ const CreateAccountScreen = () => {
           <AppInput placeholder="Confirm Password" value={confirm} onChangeText={setConfirm}
             isPassword containerStyle={{ marginBottom: spacing.lg }} />
 
-          <GradientButton title={loading ? 'Creating...' : 'Sign Up'} size="lg"
-            onPress={handleSignUp} disabled={loading} />
+          <AppButton
+            title={loading ? 'Creating…' : 'Sign Up'}
+            size="lg"
+            fullWidth
+            onPress={handleSignUp}
+            disabled={loading}
+          />
 
           <View style={styles.dividerRow}>
             <View style={styles.line} />
@@ -117,9 +126,11 @@ const CreateAccountScreen = () => {
 
 const styles = StyleSheet.create({
   scroll: { flexGrow: 1, paddingHorizontal: spacing.lg, paddingTop: spacing.md, paddingBottom: spacing.xl },
+  titleWrap: { marginBottom: spacing.lg },
+  title: { lineHeight: 40, paddingBottom: 4 },
   dividerRow: { flexDirection: 'row', alignItems: 'center', marginVertical: spacing.lg },
   line: { flex: 1, height: 1, backgroundColor: colors.divider },
-  socials: { flexDirection: 'row', justifyContent: 'center', gap: spacing.md },
+  socials: { flexDirection: 'row', justifyContent: 'center' },
   socialBtn: { width: 48, height: 48, borderRadius: 999, padding: 1.5, marginHorizontal: spacing.sm },
   socialInner: { flex: 1, backgroundColor: colors.background, borderRadius: 999, alignItems: 'center', justifyContent: 'center' },
 });

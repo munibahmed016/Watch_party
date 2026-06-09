@@ -1,14 +1,3 @@
-// src/components/GradientText.tsx
-//
-// Gradient text — matches web app's .g-text (background-clip: text with --grad).
-// Uses MaskedView so the gradient shows THROUGH the text glyphs.
-//
-// Requires: @react-native-masked-view/masked-view (already common in RN projects).
-// If not installed:  npm i @react-native-masked-view/masked-view && cd ios && pod install
-//
-// Usage:
-//   <GradientText variant="h1" bold>Watch Together</GradientText>
-
 import React from 'react';
 import { StyleSheet, TextStyle } from 'react-native';
 import MaskedView from '@react-native-masked-view/masked-view';
@@ -39,6 +28,7 @@ const GradientText: React.FC<Props> = ({
 }) => {
   return (
     <MaskedView
+      style={center ? styles.stretch : undefined}
       maskElement={
         <AppText
           variant={variant}
@@ -52,7 +42,8 @@ const GradientText: React.FC<Props> = ({
       <LinearGradient
         colors={(colorsOverride || colors.buttonGradient) as unknown as string[]}
         start={colors.gradientStartPoint}
-        end={colors.gradientEndPoint}>
+        end={colors.gradientEndPoint}
+        style={center ? styles.stretch : undefined}>
         {/* Invisible copy sets the size; gradient fills the masked glyphs */}
         <AppText
           variant={variant}
@@ -69,6 +60,7 @@ const GradientText: React.FC<Props> = ({
 
 const styles = StyleSheet.create({
   hidden: { opacity: 0 },
+  stretch: { alignSelf: 'stretch', width: '100%' },
 });
 
 export default GradientText;

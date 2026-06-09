@@ -1,4 +1,3 @@
-// src/screens/ChatsScreen.tsx
 import React, { useMemo, useState } from 'react';
 import {
   View, StyleSheet, FlatList, Image, TouchableOpacity, TextInput,
@@ -8,8 +7,9 @@ import Icon from 'react-native-vector-icons/Ionicons';
 import { useNavigation } from '@react-navigation/native';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import ScreenContainer from '@/components/ScreenContainer';
-import AppHeader from '@/components/AppHeader';
+import BrandHeader from '@/components/BrandHeader';
 import AppText from '@/components/AppText';
+import GradientText from '@/components/GradientText';
 import colors from '@/constants/colors';
 import spacing from '@/constants/spacing';
 import layout from '@/constants/layout';
@@ -43,9 +43,8 @@ const ChatsScreen = () => {
   const chatsQuery = useQuery({
     queryKey: queryKeys.chatsList,
     queryFn: () => chatsApi.list(),
-    refetchInterval: 30 * 1000, // refresh chat list every 30s
+    refetchInterval: 30 * 1000,
   });
-
   const friendsQuery = useQuery({
     queryKey: queryKeys.friendsList,
     queryFn: () => friendsApi.list(20, 0),
@@ -54,11 +53,7 @@ const ChatsScreen = () => {
   const openDirectMutation = useMutation({
     mutationFn: (userId: string) => chatsApi.openDirect(userId),
     onSuccess: ({ chat }) => {
-      navigation.navigate('ChatDetail', {
-        chatId: chat.id,
-        name: chat.name,
-        avatar: chat.avatarUrl,
-      });
+      navigation.navigate('ChatDetail', { chatId: chat.id, name: chat.name, avatar: chat.avatarUrl });
       queryClient.invalidateQueries({ queryKey: queryKeys.chatsList });
     },
     onError: (err) => showApiError(err, 'Could not open chat.'),
@@ -80,37 +75,20 @@ const ChatsScreen = () => {
     );
   }, [friendsQuery.data, q]);
 
-  const refresh = () => {
-    chatsQuery.refetch();
-    friendsQuery.refetch();
-  };
+  const refresh = () => { chatsQuery.refetch(); friendsQuery.refetch(); };
 
   const renderChat = ({ item }: { item: Chat }) => {
     const previewText = item.lastMessage?.content || 'No messages yet';
-    const time = item.lastMessage?.createdAt
-      ? formatTime(item.lastMessage.createdAt)
-      : '';
+    const time = item.lastMessage?.createdAt ? formatTime(item.lastMessage.createdAt) : '';
     return (
       <TouchableOpacity
         style={styles.row}
         activeOpacity={0.85}
-        onPress={() =>
-          navigation.navigate('ChatDetail', {
-            chatId: item.id,
-            name: item.name,
-            avatar: item.avatarUrl,
-          })
-        }>
-        <Avatar
-          uri={item.avatarUrl}
-          name={item.name || '?'}
-          showDot={!!item.members.find((m) => m.id !== item.otherUser?.id ? false : m.isOnline)}
-        />
+        onPress={() => navigation.navigate('ChatDetail', { chatId: item.id, name: item.name, avatar: item.avatarUrl })}>
+        <Avatar uri={item.avatarUrl} name={item.name || '?'} />
         <View style={{ flex: 1, marginLeft: spacing.md }}>
           <View style={styles.rowTop}>
-            <AppText bold numberOfLines={1} style={{ flex: 1 }}>
-              {item.name || '(unknown)'}
-            </AppText>
+            <AppText bold numberOfLines={1} style={{ flex: 1 }}>{item.name || '(unknown)'}</AppText>
             <AppText variant="tiny" color={colors.textSecondary}>{time}</AppText>
           </View>
           <View style={styles.rowBottom}>
@@ -133,10 +111,7 @@ const ChatsScreen = () => {
   };
 
   const renderFriend = ({ item }: { item: PublicUser }) => (
-    <TouchableOpacity
-      onPress={() => openDirectMutation.mutate(item.id)}
-      style={styles.friendCard}
-      activeOpacity={0.85}>
+    <TouchableOpacity onPress={() => openDirectMutation.mutate(item.id)} style={styles.friendCard} activeOpacity={0.85}>
       <Avatar uri={item.avatarUrl} name={item.fullName || item.username} size={56} showDot={item.isOnline} />
       <AppText variant="tiny" numberOfLines={1} style={{ marginTop: 6, maxWidth: 64, textAlign: 'center' }}>
         {(item.fullName || item.username).split(' ')[0]}
@@ -144,18 +119,21 @@ const ChatsScreen = () => {
     </TouchableOpacity>
   );
 
-  if (chatsQuery.isLoading && !chatsQuery.data) {
-    return (
-      <ScreenContainer>
-        <AppHeader showBack={false} title="Chats" showLogo={false} />
-        <View style={styles.center}><ActivityIndicator color={colors.primary} /></View>
-      </ScreenContainer>
-    );
-  }
-
   return (
     <ScreenContainer>
-      <AppHeader showBack={false} title="Chats" showLogo={false} />
+      <BrandHeader
+        showBack
+        onBack={() => navigation.navigate('Home')}
+        infoTitle="Your chats"
+        infoIntro="Message friends directly and keep the conversation going between watch parties."
+        infoPoints={[
+          { icon: 'people-circle', title: 'Friends row', text: 'Tap a friend up top to start a direct message instantly.' },
+          { icon: 'chatbubbles', title: 'Conversations', text: 'All your active chats live here, newest activity first.' },
+          { icon: 'search', title: 'Quick search', text: 'Find any person or conversation by typing their name.' },
+        ]}
+      />
+
+      <GradientText variant="h1" style={styles.pageTitle}>Chats</GradientText>
 
       <View style={styles.searchWrap}>
         <View style={styles.searchBox}>
@@ -171,46 +149,38 @@ const ChatsScreen = () => {
         </View>
       </View>
 
-      <FlatList
-        data={filteredChats}
-        keyExtractor={(i) => i.id}
-        contentContainerStyle={{ paddingHorizontal: spacing.lg, paddingBottom: 120 }}
-        ItemSeparatorComponent={() => <View style={{ height: spacing.sm }} />}
-        renderItem={renderChat}
-        refreshControl={
-          <RefreshControl
-            refreshing={chatsQuery.isFetching && !chatsQuery.isLoading}
-            onRefresh={refresh}
-            tintColor={colors.primary}
-          />
-        }
-        ListHeaderComponent={
-          filteredFriends.length > 0 ? (
-            <View style={{ marginBottom: spacing.md }}>
-              <AppText variant="small" color={colors.textSecondary} style={{ marginBottom: spacing.sm }}>
-                Friends
-              </AppText>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                {filteredFriends.map((f) => (
-                  <View key={f.id}>{renderFriend({ item: f })}</View>
-                ))}
-              </ScrollView>
-              <AppText variant="small" color={colors.textSecondary} style={{ marginTop: spacing.md }}>
-                Messages
+      {chatsQuery.isLoading && !chatsQuery.data ? (
+        <View style={styles.center}><ActivityIndicator color={colors.primary} /></View>
+      ) : (
+        <FlatList
+          data={filteredChats}
+          keyExtractor={(i) => i.id}
+          contentContainerStyle={{ paddingHorizontal: spacing.lg, paddingBottom: 120 }}
+          ItemSeparatorComponent={() => <View style={{ height: spacing.sm }} />}
+          renderItem={renderChat}
+          refreshControl={
+            <RefreshControl refreshing={chatsQuery.isFetching && !chatsQuery.isLoading} onRefresh={refresh} tintColor={colors.primary} />
+          }
+          ListHeaderComponent={
+            filteredFriends.length > 0 ? (
+              <View style={{ marginBottom: spacing.md }}>
+                <AppText variant="small" color={colors.textSecondary} style={{ marginBottom: spacing.sm }}>Friends</AppText>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                  {filteredFriends.map((f) => (<View key={f.id}>{renderFriend({ item: f })}</View>))}
+                </ScrollView>
+                <AppText variant="small" color={colors.textSecondary} style={{ marginTop: spacing.md }}>Messages</AppText>
+              </View>
+            ) : null
+          }
+          ListEmptyComponent={
+            <View style={styles.center}>
+              <AppText variant="small" color={colors.textSecondary} center>
+                {q.trim() ? 'No conversations match your search.' : 'Start a chat by tapping a friend above.'}
               </AppText>
             </View>
-          ) : null
-        }
-        ListEmptyComponent={
-          <View style={styles.center}>
-            <AppText variant="small" color={colors.textSecondary} center>
-              {q.trim()
-                ? 'No conversations match your search.'
-                : 'Start a chat by tapping a friend above.'}
-            </AppText>
-          </View>
-        }
-      />
+          }
+        />
+      )}
     </ScreenContainer>
   );
 };
@@ -228,46 +198,36 @@ function formatTime(iso: string): string {
 }
 
 const styles = StyleSheet.create({
+  pageTitle: { paddingHorizontal: spacing.lg, marginBottom: spacing.md, lineHeight: 40, paddingBottom: 4 },
   searchWrap: { paddingHorizontal: spacing.lg, marginBottom: spacing.md },
   searchBox: {
     flexDirection: 'row', alignItems: 'center',
-    backgroundColor: colors.inputBackground,
+    backgroundColor: 'rgba(255,255,255,0.05)',
+    borderWidth: 1, borderColor: colors.border,
     borderRadius: layout.radius.pill,
-    paddingHorizontal: spacing.md, height: 44,
+    paddingHorizontal: spacing.md, height: 46,
   },
-  searchInput: {
-    flex: 1, color: colors.white, marginLeft: spacing.sm,
-    fontFamily: 'SchibstedGrotesk',
-  },
+  searchInput: { flex: 1, color: colors.white, marginLeft: spacing.sm, fontFamily: 'Outfit-Regular', fontSize: 14 },
   row: {
     flexDirection: 'row', alignItems: 'center',
     padding: spacing.md,
     backgroundColor: 'rgba(255,255,255,0.04)',
     borderRadius: layout.radius.lg,
+    borderWidth: 1, borderColor: colors.border,
   },
   rowTop: { flexDirection: 'row', alignItems: 'center', marginBottom: 2 },
   rowBottom: { flexDirection: 'row', alignItems: 'center' },
   dot: {
     position: 'absolute', bottom: 2, right: 2,
     width: 10, height: 10, borderRadius: 5,
-    backgroundColor: colors.success,
-    borderWidth: 2, borderColor: colors.background,
+    backgroundColor: '#22C55E', borderWidth: 2, borderColor: colors.background,
   },
   unread: {
     minWidth: 20, height: 20, paddingHorizontal: 6, borderRadius: 10,
-    backgroundColor: colors.primary,
-    alignItems: 'center', justifyContent: 'center',
-    marginLeft: spacing.sm,
+    backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center', marginLeft: spacing.sm,
   },
-  avatarFallback: {
-    backgroundColor: colors.surfaceElevated,
-    alignItems: 'center', justifyContent: 'center',
-  },
-  friendCard: {
-    alignItems: 'center',
-    marginRight: spacing.md,
-    width: 64,
-  },
+  avatarFallback: { backgroundColor: colors.surfaceElevated, alignItems: 'center', justifyContent: 'center' },
+  friendCard: { alignItems: 'center', marginRight: spacing.md, width: 64 },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: spacing.xl },
 });
 

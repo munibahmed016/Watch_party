@@ -1,12 +1,3 @@
-// src/screens/AddFriendsScreen.tsx
-// Figma Screen 32 — 100% replication
-//
-// Card layout (left → right):
-//   [Avatar 60x60]  [Name on top, Add Friend pill below]  [Chat icon circle]
-//
-// Card itself: pill-shape with purple→magenta gradient, NOT cut on right
-// Add Friend pill sits in the middle area, NOT overlapping the name
-
 import React, { useState } from 'react';
 import {
   View, StyleSheet, FlatList, TextInput, Image, TouchableOpacity, ActivityIndicator,
@@ -16,7 +7,7 @@ import Icon from 'react-native-vector-icons/Ionicons';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import ScreenContainer from '@/components/ScreenContainer';
-import AppHeader from '@/components/AppHeader';
+import BrandHeader from '@/components/BrandHeader';
 import AppText from '@/components/AppText';
 import colors from '@/constants/colors';
 import spacing from '@/constants/spacing';
@@ -33,30 +24,31 @@ const FriendRow: React.FC<{
   sending: boolean;
 }> = ({ item, onAdd, onChat, sending }) => (
   <View style={styles.rowOuter}>
-    <LinearGradient
-      colors={['rgba(236, 72, 153, 0.45)', 'rgba(168, 85, 247, 0.18)']}
-      start={{ x: 0, y: 0 }}
-      end={{ x: 1, y: 0 }}
-      style={styles.rowGradient}>
+    <View style={styles.rowCard}>
+      <LinearGradient
+        colors={['rgba(238,48,99,0.30)', 'rgba(74,81,161,0.18)']}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 0 }}
+        style={StyleSheet.absoluteFillObject}
+        pointerEvents="none"
+      />
 
       {/* Avatar */}
-      <View style={styles.avatarWrap}>
-        <Image
-          source={{
-            uri:
-              item.avatarUrl ||
-              `https://api.dicebear.com/7.x/avataaars/png?seed=${encodeURIComponent(
-                item.username,
-              )}&backgroundColor=b6e3f4,c0aede,d1d4f9,ffd5dc,ffdfbf`,
-          }}
-          style={styles.avatar}
-        />
-      </View>
+      <Image
+        source={{
+          uri:
+            item.avatarUrl ||
+            `https://api.dicebear.com/7.x/avataaars/png?seed=${encodeURIComponent(
+              item.username,
+            )}&backgroundColor=b6e3f4,c0aede,d1d4f9,ffd5dc,ffdfbf`,
+        }}
+        style={styles.avatar}
+      />
 
-      {/* Middle: name on top, Add Friend pill below */}
+      {/* Middle: name + add pill */}
       <View style={styles.middle}>
         <View style={styles.nameRow}>
-          <AppText bold color={colors.white} numberOfLines={1} style={{ marginRight: 6 }}>
+          <AppText bold color={colors.white} numberOfLines={1} style={{ flexShrink: 1 }}>
             {item.fullName || item.username}
           </AppText>
           {item.isOnline && <View style={styles.greenDot} />}
@@ -70,18 +62,15 @@ const FriendRow: React.FC<{
           {sending ? (
             <ActivityIndicator size="small" color={colors.primary} />
           ) : (
-            <AppText
-              variant="small"
-              bold
-              color={item.requested ? colors.white : colors.primary}>
+            <AppText variant="tiny" bold color={item.requested ? colors.white : colors.primary}>
               {item.requested ? 'Requested' : 'Add Friend'}
             </AppText>
           )}
         </TouchableOpacity>
       </View>
-    </LinearGradient>
+    </View>
 
-    {/* Chat circle OUTSIDE the gradient — sits at the far right */}
+    {/* Chat circle outside the card */}
     <TouchableOpacity onPress={onChat} style={styles.chatBtn} activeOpacity={0.7}>
       <Icon name="chatbubble-ellipses-outline" size={16} color={colors.primary} />
     </TouchableOpacity>
@@ -94,8 +83,6 @@ const AddFriendsScreen = () => {
   const qc = useQueryClient();
   const [q, setQ] = useState('');
   const [requested, setRequested] = useState<Set<string>>(new Set());
-
-  const showDoneFab = route.params?.fromOnboarding === true;
 
   const suggestionsQuery = useQuery({
     queryKey: queryKeys.friendsSuggestions,
@@ -121,34 +108,43 @@ const AddFriendsScreen = () => {
   const openChatMutation = useMutation({
     mutationFn: (userId: string) => chatsApi.openDirect(userId),
     onSuccess: ({ chat }) => {
-      navigation.navigate('ChatDetail', {
-        chatId: chat.id,
-        name: chat.name,
-        avatar: chat.avatarUrl,
-      });
+      navigation.navigate('ChatDetail', { chatId: chat.id, name: chat.name, avatar: chat.avatarUrl });
     },
     onError: (err) => showApiError(err, 'Could not open chat.'),
   });
 
-  const rawList = q.trim()
-    ? (searchQuery.data?.users || [])
-    : (suggestionsQuery.data?.users || []);
-
+  const rawList = q.trim() ? (searchQuery.data?.users || []) : (suggestionsQuery.data?.users || []);
   const list: RowItem[] = rawList.map((u) => ({ ...u, requested: requested.has(u.id) }));
   const loading = q.trim() ? searchQuery.isLoading : suggestionsQuery.isLoading;
 
+  const goHome = () => navigation.reset({ index: 0, routes: [{ name: 'MainTabs' }] });
+
   return (
     <ScreenContainer>
-      <AppHeader title="Add Friends" showLogo={false} />
+      <BrandHeader
+        showBack={!route.params?.fromOnboarding}
+        infoTitle="Adding friends"
+        infoIntro="Build your circle so watch parties are more fun. You can always do this later."
+        infoPoints={[
+          { icon: 'search', title: 'Search anyone', text: 'Type a name or username to find specific people on WatchPartyLive.' },
+          { icon: 'person-add', title: 'Send a request', text: 'Tap Add Friend to send a request. They appear in your friends once accepted.' },
+          { icon: 'chatbubble-ellipses', title: 'Start a chat', text: 'Tap the chat icon to message someone directly, even before they accept.' },
+          { icon: 'play-skip-forward', title: 'Skip anytime', text: 'Not ready? Use Skip to jump straight into the app and explore.' },
+        ]}
+      />
 
-      {/* Search row */}
+      <AppText variant="h2" style={styles.pageTitle} bold center>
+        Add Friends
+      </AppText>
+
+      {/* Search */}
       <View style={styles.searchRow}>
         <View style={styles.searchBox}>
           <Icon name="search" size={16} color="#999" />
           <TextInput
             value={q}
             onChangeText={setQ}
-            placeholder=""
+            placeholder="Search by name or username"
             placeholderTextColor="#999"
             autoCapitalize="none"
             autoCorrect={false}
@@ -161,9 +157,7 @@ const AddFriendsScreen = () => {
       </View>
 
       {loading ? (
-        <View style={styles.center}>
-          <ActivityIndicator color={colors.primary} />
-        </View>
+        <View style={styles.center}><ActivityIndicator color={colors.primary} /></View>
       ) : list.length === 0 ? (
         <View style={styles.center}>
           <Icon name="people-outline" size={42} color={colors.textMuted} />
@@ -175,10 +169,7 @@ const AddFriendsScreen = () => {
         <FlatList
           data={list}
           keyExtractor={(i) => i.id}
-          contentContainerStyle={{
-            paddingHorizontal: spacing.lg,
-            paddingBottom: showDoneFab ? 110 : 30,
-          }}
+          contentContainerStyle={{ paddingHorizontal: spacing.lg, paddingBottom: 120 }}
           ItemSeparatorComponent={() => <View style={{ height: 14 }} />}
           renderItem={({ item }) => (
             <FriendRow
@@ -191,25 +182,30 @@ const AddFriendsScreen = () => {
         />
       )}
 
-      {showDoneFab && (
-        <TouchableOpacity
-          style={styles.doneFab}
-          onPress={() => navigation.replace('MainTabs')}
-          activeOpacity={0.85}>
+      {/* Bottom action bar — Skip + Continue to Home */}
+      <View style={styles.bottomBar}>
+        <TouchableOpacity onPress={goHome} style={styles.skipBtn} activeOpacity={0.8}>
+          <AppText bold color={colors.textSecondary}>Skip</AppText>
+        </TouchableOpacity>
+        <TouchableOpacity onPress={goHome} style={styles.continueBtn} activeOpacity={0.85}>
           <LinearGradient
             colors={colors.buttonGradient as unknown as string[]}
-            start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
-            style={styles.doneFabInner}>
-            <AppText bold color={colors.white}>Done</AppText>
-          </LinearGradient>
+            start={colors.gradientStartPoint}
+            end={colors.gradientEndPoint}
+            style={StyleSheet.absoluteFillObject}
+            pointerEvents="none"
+          />
+          <AppText bold color={colors.white}>Continue</AppText>
+          <Icon name="arrow-forward" size={16} color={colors.white} style={{ marginLeft: 6 }} />
         </TouchableOpacity>
-      )}
+      </View>
     </ScreenContainer>
   );
 };
 
 const styles = StyleSheet.create({
-  // ---- Search ----
+  pageTitle: { marginBottom: spacing.md, paddingBottom: 2 },
+
   searchRow: {
     flexDirection: 'row',
     paddingHorizontal: spacing.lg,
@@ -218,111 +214,83 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   searchBox: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
+    flex: 1, flexDirection: 'row', alignItems: 'center',
     backgroundColor: colors.white,
-    borderRadius: 999,
-    paddingHorizontal: 18,
-    height: 44,
+    borderRadius: 999, paddingHorizontal: 18, height: 46,
   },
   searchInput: {
-    flex: 1,
-    color: '#333',
-    marginLeft: 8,
-    fontFamily: 'SchibstedGrotesk',
-    fontSize: 14,
+    flex: 1, color: '#333', marginLeft: 8,
+    fontFamily: 'Outfit-Regular', fontSize: 14,
   },
   filterBtn: {
-    width: 44, height: 44, borderRadius: 22,
-    backgroundColor: 'rgba(255,255,255,0.15)',
+    width: 46, height: 46, borderRadius: 23,
+    backgroundColor: 'rgba(255,255,255,0.12)',
+    borderWidth: 1, borderColor: colors.border,
     alignItems: 'center', justifyContent: 'center',
   },
 
-  // ---- Row: outer container holds gradient pill + chat circle separately ----
-  rowOuter: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-  },
-  rowGradient: {
+  // Row
+  rowOuter: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  rowCard: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 14,
-    paddingLeft: 8,
-    paddingRight: 18,
+    paddingVertical: 12,
+    paddingLeft: 10,
+    paddingRight: 16,
     borderRadius: 999,
-    minHeight: 86,
+    minHeight: 96,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
   },
-
-  // ---- Avatar ----
-  avatarWrap: { position: 'relative' },
   avatar: {
-    width: 62, height: 62, borderRadius: 31,
-    borderWidth: 2.5,
-    borderColor: colors.white,
+    width: 56, height: 56, borderRadius: 28,
+    borderWidth: 2.5, borderColor: colors.white,
     backgroundColor: colors.surfaceElevated,
   },
-
-  // ---- Middle: name + Add Friend stacked vertically ----
-  middle: {
-    flex: 1,
-    marginLeft: 14,
-    justifyContent: 'center',
-  },
-  nameRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 8,
-  },
-  greenDot: {
-    width: 8, height: 8, borderRadius: 4,
-    backgroundColor: '#22C55E',
-  },
-
-  // ---- Add Friend pill ----
+  middle: { flex: 1, marginLeft: 14, justifyContent: 'center' },
+  nameRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 8 },
+  greenDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#22C55E', marginLeft: 6 },
   addBtn: {
-    paddingHorizontal: 22, paddingVertical: 8,
+    paddingHorizontal: 20, paddingVertical: 8,
     borderRadius: 999,
     backgroundColor: colors.white,
     alignSelf: 'flex-start',
-    minWidth: 110,
-    alignItems: 'center',
+    minWidth: 104, alignItems: 'center',
   },
   addBtnDone: { backgroundColor: colors.primary },
-
-  // ---- Chat circle outside the gradient pill ----
   chatBtn: {
-    width: 40, height: 40, borderRadius: 20,
+    width: 42, height: 42, borderRadius: 21,
     backgroundColor: colors.white,
     alignItems: 'center', justifyContent: 'center',
-    shadowColor: '#000',
-    shadowOpacity: 0.2,
-    shadowRadius: 4,
-    shadowOffset: { width: 0, height: 2 },
+    shadowColor: '#000', shadowOpacity: 0.2, shadowRadius: 4, shadowOffset: { width: 0, height: 2 },
     elevation: 3,
   },
 
-  center: {
-    flex: 1,
-    alignItems: 'center', justifyContent: 'center',
-    padding: spacing.xl,
-  },
+  center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: spacing.xl },
 
-  doneFab: {
-    position: 'absolute',
-    bottom: 30,
-    right: 20,
-    shadowColor: '#000',
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 6,
+  bottomBar: {
+    position: 'absolute', bottom: 0, left: 0, right: 0,
+    flexDirection: 'row', alignItems: 'center',
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.md, paddingBottom: spacing.xl,
+    backgroundColor: colors.background,
+    borderTopWidth: 1, borderTopColor: colors.border,
+    gap: 12,
   },
-  doneFabInner: {
-    paddingHorizontal: 28, paddingVertical: 14,
-    borderRadius: 999,
+  skipBtn: {
+    paddingHorizontal: 24, height: 50, borderRadius: 999,
+    alignItems: 'center', justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.06)',
+    borderWidth: 1, borderColor: colors.border,
+  },
+  continueBtn: {
+    flex: 1, height: 50, borderRadius: 999,
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    overflow: 'hidden',
+    shadowColor: colors.primary, shadowOpacity: 0.4, shadowRadius: 12, shadowOffset: { width: 0, height: 5 },
+    elevation: 6,
   },
 });
 

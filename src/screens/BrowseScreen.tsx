@@ -1,15 +1,3 @@
-// src/screens/BrowseScreen.tsx
-//
-// The "Browse" / content discovery screen (LCD/TV icon on Home).
-//   - Search bar with working backend search
-//   - Category filter pills (All + 9 categories) with counts
-//   - Responsive 3-column grid of content cards (real YouTube thumbnails)
-//   - Infinite pagination (loads more on scroll)
-//   - Loading skeletons + empty/error states
-//   - Tap a card → create a room from that content → Room screen
-//
-// Backend: /api/content (list, categories), /api/rooms (create)
-
 import React, { useState, useMemo, useCallback } from 'react';
 import {
   View, StyleSheet, FlatList, TextInput, Image, TouchableOpacity,
