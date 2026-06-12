@@ -1,8 +1,3 @@
-// src/screens/NewsHotScreen.tsx
-//
-// Tabs and CTAs now use gradient as ABSOLUTE BACKGROUND (text never clips).
-// Same pattern as AppButton primary variant.
-
 import React, { useState } from 'react';
 import {
   View, StyleSheet, ScrollView, Image, TouchableOpacity, ActivityIndicator,
@@ -14,6 +9,7 @@ import { useNavigation } from '@react-navigation/native';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import ScreenContainer from '@/components/ScreenContainer';
 import AppText from '@/components/AppText';
+import GradientText from '@/components/GradientText';
 import colors from '@/constants/colors';
 import spacing from '@/constants/spacing';
 import layout from '@/constants/layout';
@@ -65,7 +61,7 @@ const NewsHotScreen = () => {
     <ScreenContainer>
       {/* Header */}
       <View style={styles.head}>
-        <AppText variant="h2" bold>News & Hot</AppText>
+        <GradientText variant="h2" style={{ lineHeight: 30, paddingBottom: 2 }}>New &amp; Hot</GradientText>
         <View style={{ flexDirection: 'row' }}>
           <TouchableOpacity style={styles.headIcon} onPress={() => navigation.navigate('Browse')}>
             <Icon name="tv-outline" size={18} color={colors.white} />

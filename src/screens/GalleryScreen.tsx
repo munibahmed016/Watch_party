@@ -1,13 +1,11 @@
-// src/screens/GalleryScreen.tsx
-// Real photo picker. Auto-opens library on mount, uploads selection, navigates on.
-
 import React, { useEffect, useRef, useState } from 'react';
 import { View, StyleSheet, ActivityIndicator, Alert } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { launchImageLibrary, ImagePickerResponse, MediaType } from 'react-native-image-picker';
 import ScreenContainer from '@/components/ScreenContainer';
-import AppHeader from '@/components/AppHeader';
+import BrandHeader from '@/components/BrandHeader';
 import AppText from '@/components/AppText';
+import GradientText from '@/components/GradientText';
 import colors from '@/constants/colors';
 import spacing from '@/constants/spacing';
 import { usersApi } from '@/lib/api';
@@ -21,40 +19,17 @@ const GalleryScreen = () => {
   const launchedRef = useRef(false);
 
   useEffect(() => {
-    // Auto-open the library exactly once on mount
     if (launchedRef.current) return;
     launchedRef.current = true;
-
-    const opts = {
-      mediaType: 'photo' as MediaType,
-      maxWidth: 1024,
-      maxHeight: 1024,
-      quality: 0.85 as const,
-      selectionLimit: 1,
-    };
-
+    const opts = { mediaType: 'photo' as MediaType, maxWidth: 1024, maxHeight: 1024, quality: 0.85 as const, selectionLimit: 1 };
     launchImageLibrary(opts, async (response: ImagePickerResponse) => {
-      if (response.didCancel) {
-        navigation.goBack();
-        return;
-      }
-      if (response.errorCode) {
-        Alert.alert('Photo library', response.errorMessage || 'Could not open library.');
-        navigation.goBack();
-        return;
-      }
+      if (response.didCancel) return navigation.goBack();
+      if (response.errorCode) { Alert.alert('Photo library', response.errorMessage || 'Could not open library.'); return navigation.goBack(); }
       const asset = response.assets?.[0];
-      if (!asset?.uri) {
-        navigation.goBack();
-        return;
-      }
-
+      if (!asset?.uri) return navigation.goBack();
       setUploading(true);
       try {
-        const { user: updated } = await usersApi.uploadAvatar(
-          asset.uri,
-          asset.type || 'image/jpeg'
-        );
+        const { user: updated } = await usersApi.uploadAvatar(asset.uri, asset.type || 'image/jpeg');
         await setUser(updated);
         navigation.replace('ProfilePictureAdded');
       } catch (err) {
@@ -68,8 +43,11 @@ const GalleryScreen = () => {
 
   return (
     <ScreenContainer>
-      <AppHeader />
+      <BrandHeader showBack onBack={() => navigation.goBack()} />
       <View style={styles.body}>
+        <GradientText variant="h2" center style={{ lineHeight: 30, paddingBottom: 2, marginBottom: spacing.lg }}>
+          {uploading ? 'Uploading' : 'Choose a Photo'}
+        </GradientText>
         <ActivityIndicator color={colors.primary} size="large" />
         <AppText variant="small" color={colors.textSecondary} center style={{ marginTop: spacing.lg }}>
           {uploading ? 'Uploading your photo…' : 'Opening photo library…'}

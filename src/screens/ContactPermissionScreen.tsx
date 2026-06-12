@@ -88,7 +88,7 @@ const ContactPermissionScreen = () => {
       />
 
       <View style={styles.body}>
-        <GradientText variant="h1" style={styles.title}>
+        <GradientText variant="h2" style={styles.title}>
           Find your friends{'\n'}faster
         </GradientText>
 

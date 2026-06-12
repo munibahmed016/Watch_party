@@ -39,7 +39,7 @@ const ProfilePictureAddedScreen = () => {
           <Icon name="checkmark" size={34} color={colors.white} />
         </View>
 
-        <GradientText variant="h1" center style={styles.title}>
+        <GradientText variant="h2" center style={styles.title}>
           Profile picture added
         </GradientText>
         <AppText variant="small" color={colors.textSecondary} center style={styles.sub}>

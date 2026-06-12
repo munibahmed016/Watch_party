@@ -1,7 +1,3 @@
-// src/lib/socket.ts
-// Socket.IO client singleton with JWT handshake + auto-reconnect.
-// Uses the same access token as the REST API.
-
 import { io, Socket } from 'socket.io-client';
 import { SOCKET_URL } from './config';
 import { tokenStorage } from './storage';

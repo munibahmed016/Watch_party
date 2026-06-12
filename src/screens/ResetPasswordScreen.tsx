@@ -1,12 +1,12 @@
-// src/screens/ResetPasswordScreen.tsx
 import React, { useState } from 'react';
 import { View, StyleSheet, KeyboardAvoidingView, Platform, Alert } from 'react-native';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import ScreenContainer from '@/components/ScreenContainer';
-import AppHeader from '@/components/AppHeader';
+import BrandHeader from '@/components/BrandHeader';
 import AppText from '@/components/AppText';
 import AppInput from '@/components/AppInput';
-import GradientButton from '@/components/GradientButton';
+import AppButton from '@/components/AppButton';
+import GradientText from '@/components/GradientText';
 import colors from '@/constants/colors';
 import spacing from '@/constants/spacing';
 import { authApi } from '@/lib/api';
@@ -27,7 +27,6 @@ const ResetPasswordScreen = () => {
     if (code.length !== 6) return showApiError(new Error('Please enter the 6-digit code.'));
     if (pwd.length < 8) return showApiError(new Error('Password must be at least 8 characters.'));
     if (pwd !== confirm) return showApiError(new Error('Passwords do not match.'));
-
     setLoading(true);
     try {
       await authApi.resetPassword(email, code, pwd);
@@ -43,23 +42,27 @@ const ResetPasswordScreen = () => {
 
   return (
     <ScreenContainer>
-      <AppHeader />
+      <BrandHeader
+        infoTitle="Reset your password"
+        infoIntro="Enter the code we emailed you, then choose a new password."
+        infoPoints={[
+          { icon: 'mail', title: 'Check your email', text: `We sent a 6-digit code to ${email || 'your email'}.` },
+          { icon: 'lock-open', title: 'New password', text: 'Use at least 8 characters. Make it strong and memorable.' },
+          { icon: 'log-in', title: 'Sign back in', text: 'After resetting, sign in with your new password.' },
+        ]}
+      />
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <View style={styles.body}>
-          <AppText variant="h1" bold center style={{ marginBottom: spacing.sm }}>Reset Password</AppText>
+          <GradientText variant="h1" center style={styles.title}>Reset Password</GradientText>
           <AppText variant="small" color={colors.textSecondary} center style={{ marginBottom: spacing.xl }}>
-            Enter the code we sent to {email || 'your email'} and{'\n'}create a new password.
+            Enter the code we sent to {email || 'your email'} and create a new password.
           </AppText>
           <AppInput placeholder="6-digit code" value={code}
             onChangeText={(t) => setCode(t.replace(/\D/g, '').slice(0, 6))}
-            keyboardType="number-pad" maxLength={6}
-            containerStyle={{ marginBottom: spacing.md }} />
-          <AppInput placeholder="New Password" value={pwd} onChangeText={setPwd} isPassword
-            containerStyle={{ marginBottom: spacing.md }} />
-          <AppInput placeholder="Confirm Password" value={confirm} onChangeText={setConfirm} isPassword
-            containerStyle={{ marginBottom: spacing.xl }} />
-          <GradientButton title={loading ? 'Resetting...' : 'Reset Password'} size="lg"
-            onPress={handleSubmit} disabled={loading} />
+            keyboardType="number-pad" maxLength={6} containerStyle={{ marginBottom: spacing.md }} />
+          <AppInput placeholder="New Password" value={pwd} onChangeText={setPwd} isPassword containerStyle={{ marginBottom: spacing.md }} />
+          <AppInput placeholder="Confirm Password" value={confirm} onChangeText={setConfirm} isPassword containerStyle={{ marginBottom: spacing.xl }} />
+          <AppButton title={loading ? 'Resetting…' : 'Reset Password'} size="lg" fullWidth onPress={handleSubmit} disabled={loading} />
         </View>
       </KeyboardAvoidingView>
     </ScreenContainer>
@@ -67,7 +70,8 @@ const ResetPasswordScreen = () => {
 };
 
 const styles = StyleSheet.create({
-  body: { flex: 1, paddingHorizontal: spacing.lg, paddingTop: spacing.xl },
+  body: { flex: 1, paddingHorizontal: spacing.lg, paddingTop: spacing.lg },
+  title: { lineHeight: 40, paddingBottom: 4, marginBottom: spacing.sm },
 });
 
 export default ResetPasswordScreen;

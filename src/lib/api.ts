@@ -1,7 +1,3 @@
-// src/lib/api.ts
-// Typed fetch-based API client for ALL Phase 1 + Phase 2 endpoints.
-// Auto-refresh on 401, friendly errors, FormData support for uploads.
-
 import { API_BASE } from './config';
 import { tokenStorage } from './storage';
 
@@ -145,6 +141,7 @@ export type AuthUser = {
   avatarUrl: string | null;
   bio: string | null;
   isVerified: boolean;
+  isAdmin: boolean;
   phoneNumber: string | null;
 };
 
@@ -326,6 +323,70 @@ export type ArchiveMovie = {
   watchUrl: string;
   creator: string | null;
   duration: number | null;
+};
+
+// ---- Content library ----
+
+export type ContentCategory =
+  | 'MOVIE' | 'COMEDY' | 'NEWS' | 'CARTOON' | 'ANIME'
+  | 'DRAMA' | 'SPORTS' | 'PODCAST' | 'TVSHOW';
+
+export type ContentItem = {
+  id: string;
+  title: string;
+  description: string | null;
+  category: ContentCategory;
+  videoProvider: string;
+  videoId: string;
+  videoUrl: string;
+  thumbnailUrl: string;
+  year: number | null;
+  rating: number | null;
+  viewCount: number;
+  isFeatured: boolean;
+};
+
+// ---- Admin ----
+
+export type AdminStats = {
+  users: number;
+  verifiedUsers: number;
+  bannedUsers: number;
+  subscribedUsers: number;
+  rooms: number;
+  posts: number;
+  content: number;
+  contentByCategory: { category: string; count: number }[];
+};
+
+export type AdminUser = {
+  id: string;
+  username: string;
+  email: string;
+  fullName: string | null;
+  avatarUrl: string | null;
+  isVerified: boolean;
+  isAdmin: boolean;
+  isBanned: boolean;
+  planId: string | null;
+  subscriptionExpiresAt: string | null;
+  plan?: { name: string } | null;
+  createdAt: string;
+};
+
+export type AdminAnalytics = {
+  series: { date: string; signups: number; rooms: number }[];
+  subscriptionsByPlan: { plan: string; count: number }[];
+};
+
+export type AdminPlan = {
+  id: string;
+  name: string;
+  price: number;
+  durationDays: number;
+  features: string[];
+  isActive: boolean;
+  subscriberCount: number;
 };
 
 // =====================================================================
@@ -550,7 +611,6 @@ export const discoverApi = {
   },
 
   genres: () => request<{ genres: string[] }>('/discover/genres'),
-  // Inside discoverApi = { ... }, alongside the existing methods:
 
   youtubeSearch: (q: string) =>
     request<{ items: Array<{
@@ -592,12 +652,6 @@ export const notificationsApi = {
 // =====================================================================
 
 export const postsApi = {
-  /**
-   * List posts.
-   * - kind: filter NEWS or EVENT
-   * - upcoming: events only, eventAt >= now, ordered soonest first
-   * - authorUsername: posts from a specific user (for profile pages)
-   */
   list: (params?: {
     kind?: PostKind;
     upcoming?: boolean;
@@ -626,7 +680,7 @@ export const postsApi = {
     body?: string | null;
     coverUrl?: string | null;
     visibility?: PostVisibility;
-    eventAt?: string | null;        // ISO 8601, required for EVENT
+    eventAt?: string | null;
     eventEndAt?: string | null;
     location?: string | null;
     rsvpLimit?: number | null;
@@ -663,25 +717,10 @@ export const postsApi = {
     }),
 };
 
-export type ContentCategory =
-  | 'MOVIE' | 'COMEDY' | 'NEWS' | 'CARTOON' | 'ANIME'
-  | 'DRAMA' | 'SPORTS' | 'PODCAST' | 'TVSHOW';
- 
-export type ContentItem = {
-  id: string;
-  title: string;
-  description: string | null;
-  category: ContentCategory;
-  videoProvider: string;
-  videoId: string;
-  videoUrl: string;
-  thumbnailUrl: string;
-  year: number | null;
-  rating: number | null;
-  viewCount: number;
-  isFeatured: boolean;
-};
- 
+// =====================================================================
+// Content API (Browse / Discover catalog)
+// =====================================================================
+
 export const contentApi = {
   list: (params?: {
     category?: ContentCategory;
@@ -706,21 +745,62 @@ export const contentApi = {
       hasMore: boolean;
     }>(`/content${q ? `?${q}` : ''}`);
   },
- 
+
   categories: () =>
     request<{ categories: Array<{ category: ContentCategory; count: number }> }>(
       '/content/categories'
     ),
- 
+
   featured: (limit = 10) =>
     request<{ items: ContentItem[] }>(`/content/featured?limit=${limit}`),
- 
+
   landing: (perCategory = 12) =>
     request<{ sections: Array<{ category: ContentCategory; items: ContentItem[] }> }>(
       `/content/landing?perCategory=${perCategory}`
     ),
- 
+
   getById: (id: string) =>
     request<{ item: ContentItem | null }>(`/content/${id}`),
 };
- 
+
+// =====================================================================
+// Admin API (master access — requires isAdmin)
+// =====================================================================
+
+export const adminApi = {
+  stats: () => request<AdminStats>('/admin/stats'),
+  analytics: () => request<AdminAnalytics>('/admin/analytics'),
+
+  listUsers: (search = '', page = 1, limit = 100) =>
+    request<{ users: AdminUser[]; total: number; page: number; totalPages: number }>(
+      `/admin/users?page=${page}&limit=${limit}${search ? `&search=${encodeURIComponent(search)}` : ''}`
+    ),
+
+  updateUser: (id: string, body: { isAdmin?: boolean; isVerified?: boolean; isBanned?: boolean }) =>
+    request<{ user: AdminUser }>(`/admin/users/${id}`, { method: 'PATCH', body }),
+
+  deleteUser: (id: string) =>
+    request<{ deleted: boolean }>(`/admin/users/${id}`, { method: 'DELETE' }),
+
+  createContent: (body: { title: string; videoUrl: string; category: string; year?: number; description?: string; isFeatured?: boolean }) =>
+    request<{ content: ContentItem }>('/admin/content', { method: 'POST', body }),
+
+  updateContent: (id: string, body: Partial<{ title: string; videoUrl: string; category: string; year: number; description: string; isFeatured: boolean }>) =>
+    request<{ content: ContentItem }>(`/admin/content/${id}`, { method: 'PATCH', body }),
+
+  deleteContent: (id: string) =>
+    request<{ deleted: boolean }>(`/admin/content/${id}`, { method: 'DELETE' }),
+
+  // Plans
+  listPlans: () => request<{ plans: AdminPlan[] }>('/admin/plans'),
+  createPlan: (body: { name: string; price?: number; durationDays?: number; features?: string[]; isActive?: boolean }) =>
+    request<{ plan: AdminPlan }>('/admin/plans', { method: 'POST', body }),
+  deletePlan: (id: string) =>
+    request<{ deleted: boolean }>(`/admin/plans/${id}`, { method: 'DELETE' }),
+
+  // Subscriptions (manual)
+  assignSubscription: (userId: string, planId: string) =>
+    request<{ user: AdminUser }>('/admin/subscriptions/assign', { method: 'POST', body: { userId, planId } }),
+  removeSubscription: (userId: string) =>
+    request<{ user: AdminUser }>('/admin/subscriptions/remove', { method: 'POST', body: { userId } }),
+};

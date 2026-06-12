@@ -1,25 +1,13 @@
-// src/screens/SettingsScreen.tsx
-//
-// PIXEL-MATCH to Figma:
-//   - Bigger 140x140 avatar with thick white border + green online dot
-//   - Camera button bottom-right of avatar (white circle, dark icon)
-//   - Edit Profile pill — pink gradient with pencil icon
-//   - Add Friends pill — transparent with white border, person+ icon
-//   - Info rows with proper icons + "at" prefix bold
-//   - 4 colorful quick action tiles (Events/Reels/Live Videos/Streaming) — white bg, pink icons
-//   - Sign Out underlined at bottom
-
 import React from 'react';
-import {
-  View, StyleSheet, Image, TouchableOpacity, ScrollView, Alert,
-} from 'react-native';
+import { View, StyleSheet, Image, TouchableOpacity, ScrollView, Alert } from 'react-native';
 import LinearGradient from 'react-native-linear-gradient';
 import Icon from 'react-native-vector-icons/Ionicons';
 import { useNavigation } from '@react-navigation/native';
 import { useQuery } from '@tanstack/react-query';
 import ScreenContainer from '@/components/ScreenContainer';
-import AppHeader from '@/components/AppHeader';
+import BrandHeader from '@/components/BrandHeader';
 import AppText from '@/components/AppText';
+import GradientText from '@/components/GradientText';
 import colors from '@/constants/colors';
 import spacing from '@/constants/spacing';
 import { friendsApi } from '@/lib/api';
@@ -28,26 +16,18 @@ import { useAuth } from '@/contexts/AuthContext';
 
 const InfoRow: React.FC<{ icon: string; label: string; value: string }> = ({ icon, label, value }) => (
   <View style={styles.infoRow}>
-    <Icon name={icon} size={18} color={colors.white} style={styles.infoIcon} />
-    <AppText variant="small" color={colors.white}>
-      {label}{' '}
-      <AppText variant="small" bold color={colors.white}>
-        {value}
-      </AppText>
-    </AppText>
+    <View style={styles.infoIconWrap}><Icon name={icon} size={16} color={colors.primary} /></View>
+    <View style={{ flex: 1 }}>
+      <AppText variant="tiny" color={colors.textSecondary}>{label}</AppText>
+      <AppText variant="small" bold numberOfLines={1}>{value}</AppText>
+    </View>
   </View>
 );
 
-const QuickAction: React.FC<{ icon: string; label: string; onPress?: () => void }> = ({
-  icon, label, onPress,
-}) => (
+const QuickAction: React.FC<{ icon: string; label: string; onPress?: () => void }> = ({ icon, label, onPress }) => (
   <TouchableOpacity onPress={onPress} style={styles.quick} activeOpacity={0.85}>
-    <View style={styles.quickIcon}>
-      <Icon name={icon} size={26} color={colors.primary} />
-    </View>
-    <AppText variant="tiny" color={colors.white} style={{ marginTop: 8 }} numberOfLines={1}>
-      {label}
-    </AppText>
+    <View style={styles.quickIcon}><Icon name={icon} size={24} color={colors.primary} /></View>
+    <AppText variant="tiny" color={colors.textSecondary} style={{ marginTop: 8 }} numberOfLines={1}>{label}</AppText>
   </TouchableOpacity>
 );
 
@@ -59,123 +39,107 @@ const SettingsScreen = () => {
     queryKey: queryKeys.friendsList,
     queryFn: () => friendsApi.list(50, 0),
   });
-
   const friendsCount = friendsQuery.data?.friends.length || 0;
 
   const handleSignOut = () => {
     Alert.alert('Sign out', 'Are you sure?', [
       { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Sign out', style: 'destructive',
-        onPress: async () => {
-          await signOut();
-          navigation.reset({ index: 0, routes: [{ name: 'Onboarding' }] });
-        },
-      },
+      { text: 'Sign out', style: 'destructive', onPress: async () => { await signOut(); navigation.reset({ index: 0, routes: [{ name: 'Onboarding' }] }); } },
     ]);
   };
 
   return (
     <ScreenContainer>
-      <AppHeader showBack={true} title="" showLogo={false} />
-      <ScrollView
-        contentContainerStyle={{ paddingBottom: 120, paddingHorizontal: spacing.lg }}
-        showsVerticalScrollIndicator={false}>
+      <BrandHeader
+        showBack={false}
+        infoTitle="Your settings"
+        infoIntro="Manage your profile, friends, and account from one place."
+        infoPoints={[
+          { icon: 'create', title: 'Edit profile', text: 'Update your name, username, bio and photo any time.' },
+          { icon: 'person-add', title: 'Add friends', text: 'Find people and grow your watch-party circle.' },
+          { icon: 'log-out', title: 'Sign out', text: 'Safely sign out of your account when you\'re done.' },
+        ]}
+      />
+      <ScrollView contentContainerStyle={{ paddingBottom: 120, paddingHorizontal: spacing.lg }} showsVerticalScrollIndicator={false}>
 
-        <AppText variant="h2" bold center style={{ marginBottom: spacing.lg }}>
-          Setting
-        </AppText>
+        <GradientText variant="h1" center style={styles.pageTitle}>Settings</GradientText>
 
-        {/* Big avatar with thick white border */}
+        {/* Avatar */}
         <View style={styles.avatarWrap}>
           <View style={styles.avatarRing}>
             {user?.avatarUrl ? (
               <Image source={{ uri: user.avatarUrl }} style={styles.avatar} />
             ) : (
               <View style={[styles.avatar, styles.avatarFallback]}>
-                <AppText variant="h1" bold>
-                  {(user?.fullName || user?.username || '?').slice(0, 1).toUpperCase()}
-                </AppText>
+                <AppText variant="h1" bold>{(user?.fullName || user?.username || '?').slice(0, 1).toUpperCase()}</AppText>
               </View>
             )}
           </View>
-          <TouchableOpacity
-            style={styles.cameraBtn}
-            onPress={() => navigation.navigate('EditProfile')}
-            activeOpacity={0.85}>
-            <Icon name="camera" size={16} color={colors.white} />
+          <TouchableOpacity style={styles.cameraBtn} onPress={() => navigation.navigate('EditProfile')} activeOpacity={0.85}>
+            <LinearGradient colors={colors.buttonGradient as unknown as string[]}
+              start={colors.gradientStartPoint} end={colors.gradientEndPoint}
+              style={StyleSheet.absoluteFillObject} pointerEvents="none" />
+            <Icon name="camera" size={15} color={colors.white} />
           </TouchableOpacity>
         </View>
 
-        <AppText variant="h2" bold center style={{ marginTop: spacing.md }}>
-          {user?.fullName || user?.username || 'Welcome'}
-          <AppText variant="h2" bold color="#22C55E"> ·</AppText>
-        </AppText>
-        <AppText variant="small" color={colors.textSecondary} center>
-          {friendsCount}+ Friends
-        </AppText>
+        <View style={styles.nameRow}>
+          <AppText variant="h3" bold>{user?.fullName || user?.username || 'Welcome'}</AppText>
+          {user?.isVerified && <Icon name="checkmark-circle" size={16} color={colors.primary} style={{ marginLeft: 4 }} />}
+        </View>
+        <AppText variant="tiny" color={colors.textSecondary} center>@{user?.username} · {friendsCount} friends</AppText>
 
-        {/* Edit Profile / Add Friends */}
+        {/* Action pills */}
         <View style={styles.actionRow}>
-          <TouchableOpacity
-            activeOpacity={0.85}
-            onPress={() => navigation.navigate('EditProfile')}
-            style={styles.actionPill}>
-            <LinearGradient
-              colors={colors.buttonGradient as unknown as string[]}
-              start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
-              style={styles.actBtn}>
-              <Icon name="pencil" size={16} color={colors.white} style={{ marginRight: 8 }} />
+          <TouchableOpacity activeOpacity={0.85} onPress={() => navigation.navigate('EditProfile')} style={styles.actionPill}>
+            <View style={[styles.actBtn, { overflow: 'hidden' }]}>
+              <LinearGradient colors={colors.buttonGradient as unknown as string[]}
+                start={colors.gradientStartPoint} end={colors.gradientEndPoint}
+                style={StyleSheet.absoluteFillObject} pointerEvents="none" />
+              <Icon name="pencil" size={15} color={colors.white} style={{ marginRight: 8 }} />
               <AppText variant="small" bold color={colors.white} numberOfLines={1}>Edit Profile</AppText>
-            </LinearGradient>
+            </View>
           </TouchableOpacity>
-          <TouchableOpacity
-            onPress={() => navigation.navigate('AddFriends')}
-            activeOpacity={0.85}
-            style={[styles.actionPill, styles.actBtnGhost]}>
-            <Icon name="person-add" size={16} color={colors.white} style={{ marginRight: 8 }} />
+          <TouchableOpacity onPress={() => navigation.navigate('AddFriends')} activeOpacity={0.85} style={[styles.actionPill, styles.actBtn, styles.actBtnGhost]}>
+            <Icon name="person-add" size={15} color={colors.white} style={{ marginRight: 8 }} />
             <AppText variant="small" bold color={colors.white} numberOfLines={1}>Add Friends</AppText>
           </TouchableOpacity>
         </View>
 
+        {/* REAL info rows */}
         <View style={styles.info}>
-          <InfoRow icon="briefcase-outline" label="Work at" value="Lorem Ipsum" />
-          <View style={styles.divider} />
-          <InfoRow icon="school-outline" label="Studied at" value="Lorem Ipsum" />
-          <View style={styles.divider} />
-          <InfoRow icon="heart-outline" label="Went to" value="Lorem Ipsum" />
-          <View style={styles.divider} />
-          <InfoRow icon="home-outline" label="Lives in" value="Lorem Ipsum" />
+          <InfoRow icon="mail-outline" label="Email" value={user?.email || '—'} />
+          {user?.phoneNumber ? <InfoRow icon="call-outline" label="Phone" value={user.phoneNumber} /> : null}
+          <InfoRow icon="shield-checkmark-outline" label="Account status" value={user?.isVerified ? 'Verified' : 'Unverified'} />
+          {user?.bio ? <InfoRow icon="document-text-outline" label="Bio" value={user.bio} /> : null}
         </View>
 
-        {/* 4 white tile quick actions */}
+        {/* Quick actions — real navigation */}
         <View style={styles.quickRow}>
-          <QuickAction
-            icon="calendar"
-            label="Events"
-            onPress={() => navigation.navigate('CreatePost', { kind: 'EVENT' })}
-          />
-          <QuickAction
-            icon="play-circle"
-            label="Reels"
-            onPress={() => navigation.navigate('MainTabs', { screen: 'News' })}
-          />
-          <QuickAction
-            icon="videocam"
-            label="Live Videos"
-            onPress={() => navigation.navigate('CreateRoom')}
-          />
-          <QuickAction
-            icon="radio"
-            label="Streaming"
-            onPress={() => navigation.navigate('CreateRoom')}
-          />
+          <QuickAction icon="calendar" label="Events" onPress={() => navigation.navigate('CreatePost', { kind: 'EVENT' })} />
+          <QuickAction icon="newspaper" label="News" onPress={() => navigation.navigate('CreatePost', { kind: 'NEWS' })} />
+          <QuickAction icon="videocam" label="Watch" onPress={() => navigation.navigate('CreateRoom')} />
+          <QuickAction icon="mic" label="Podcast" onPress={() => navigation.navigate('JoinPodcast')} />
         </View>
+
+        {/* Admin-only — invisible to normal users */}
+        {(user as any)?.isAdmin && (
+          <TouchableOpacity
+            onPress={() => navigation.navigate('Admin')}
+            activeOpacity={0.85}
+            style={styles.adminBtn}>
+            <LinearGradient
+              colors={colors.buttonGradient as unknown as string[]}
+              start={colors.gradientStartPoint} end={colors.gradientEndPoint}
+              style={StyleSheet.absoluteFillObject} pointerEvents="none" />
+            <Icon name="shield-checkmark" size={16} color={colors.white} style={{ marginRight: 8 }} />
+            <AppText bold color={colors.white}>Admin Panel</AppText>
+          </TouchableOpacity>
+        )}
 
         <TouchableOpacity style={styles.signOut} onPress={handleSignOut}>
-          <AppText bold style={{ textDecorationLine: 'underline' }}>
-            Sign Out
-          </AppText>
+          <Icon name="log-out-outline" size={16} color={colors.textSecondary} style={{ marginRight: 6 }} />
+          <AppText bold color={colors.textSecondary}>Sign Out</AppText>
         </TouchableOpacity>
       </ScrollView>
     </ScreenContainer>
@@ -183,87 +147,25 @@ const SettingsScreen = () => {
 };
 
 const styles = StyleSheet.create({
-  avatarWrap: {
-    alignItems: 'center',
-    marginTop: spacing.sm,
-    position: 'relative',
-  },
-  avatarRing: {
-    width: 150, height: 150, borderRadius: 75,
-    borderWidth: 4,
-    borderColor: colors.white,
-    alignItems: 'center', justifyContent: 'center',
-    overflow: 'hidden',
-  },
-  avatar: {
-    width: 142, height: 142, borderRadius: 71,
-  },
-  avatarFallback: {
-    backgroundColor: colors.primaryDark,
-    alignItems: 'center', justifyContent: 'center',
-  },
-  cameraBtn: {
-    position: 'absolute',
-    bottom: 0,
-    right: '32%',
-    width: 36, height: 36, borderRadius: 18,
-    backgroundColor: '#1A1A1A',
-    alignItems: 'center', justifyContent: 'center',
-    borderWidth: 2, borderColor: colors.white,
-  },
-
-  // ---- Action pills ----
-  actionRow: {
-    flexDirection: 'row',
-    marginTop: spacing.lg,
-    gap: 12,
-  },
+  pageTitle: { lineHeight: 40, paddingBottom: 4, marginBottom: spacing.md },
+  avatarWrap: { alignItems: 'center', marginTop: spacing.sm, position: 'relative' },
+  avatarRing: { width: 130, height: 130, borderRadius: 65, borderWidth: 3, borderColor: colors.primary, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
+  avatar: { width: 122, height: 122, borderRadius: 61 },
+  avatarFallback: { backgroundColor: colors.surfaceElevated, alignItems: 'center', justifyContent: 'center' },
+  cameraBtn: { position: 'absolute', bottom: 0, right: '33%', width: 34, height: 34, borderRadius: 17, overflow: 'hidden', alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: colors.background },
+  nameRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginTop: spacing.md },
+  actionRow: { flexDirection: 'row', marginTop: spacing.lg, gap: 12 },
   actionPill: { flex: 1 },
-  actBtn: {
-    height: 46,
-    borderRadius: 999,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 12,
-  },
-  actBtnGhost: {
-    height: 46,
-    borderRadius: 999,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 12,
-    backgroundColor: 'transparent',
-    borderWidth: 1.5,
-    borderColor: colors.white,
-  },
-
-  info: { marginTop: spacing.lg },
+  actBtn: { height: 46, borderRadius: 999, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 12 },
+  actBtnGhost: { backgroundColor: 'rgba(255,255,255,0.1)', borderWidth: 1, borderColor: colors.border },
+  info: { marginTop: spacing.xl, backgroundColor: 'rgba(255,255,255,0.04)', borderRadius: 18, borderWidth: 1, borderColor: colors.border, paddingHorizontal: spacing.md, paddingVertical: spacing.xs },
   infoRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 12 },
-  infoIcon: { marginRight: 12, opacity: 0.9 },
-  divider: { height: 0.5, backgroundColor: 'rgba(255,255,255,0.15)' },
-
-  // ---- Quick action tiles (Figma: white tiles with pink icons) ----
-  quickRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginTop: spacing.lg,
-    gap: 10,
-  },
+  infoIconWrap: { width: 36, height: 36, borderRadius: 18, backgroundColor: 'rgba(238,48,99,0.15)', alignItems: 'center', justifyContent: 'center', marginRight: 12 },
+  quickRow: { flexDirection: 'row', justifyContent: 'space-between', marginTop: spacing.xl, gap: 10 },
   quick: { alignItems: 'center', flex: 1 },
-  quickIcon: {
-    width: 70, height: 70, borderRadius: 16,
-    backgroundColor: colors.white,
-    alignItems: 'center', justifyContent: 'center',
-    shadowColor: '#000',
-    shadowOpacity: 0.2,
-    shadowRadius: 6,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 4,
-  },
-
-  signOut: { alignItems: 'center', marginTop: spacing.xl, paddingVertical: 8 },
+  quickIcon: { width: 66, height: 66, borderRadius: 16, backgroundColor: 'rgba(255,255,255,0.06)', borderWidth: 1, borderColor: colors.border, alignItems: 'center', justifyContent: 'center' },
+  adminBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginTop: spacing.xl, paddingVertical: 14, borderRadius: 999, overflow: 'hidden' },
+  signOut: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginTop: spacing.lg, paddingVertical: 10 },
 });
 
 export default SettingsScreen;

@@ -72,7 +72,7 @@
 	<key>NSContactsUsageDescription</key>
 	<string>WatchPartyLive uses your contacts to help you find friends faster.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
-	<string/>
+	<string>Location is used to improve app functionality.</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>WatchPartyLive uses the microphone for voice messages and video calls.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
@@ -105,7 +105,7 @@
 	<key>UIStatusBarHidden</key>
 	<false/>
 	<key>UIStatusBarStyle</key>
-	<string/>
+	<string></string>
 	<key>UISupportedInterfaceOrientations</key>
 	<array>
 		<string>UIInterfaceOrientationPortrait</string>

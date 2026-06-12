@@ -25,7 +25,7 @@ import VideoPickerScreen from '@/screens/VideoPickerScreen';
 import CreatePostScreen from '@/screens/CreatePostScreen';
 import BrowseScreen from '@/screens/BrowseScreen';
 import HowItWorksScreen from '@/screens/HowItWorksScreen';
-
+import AdminNavigator from '@/navigation/AdminNavigator';
 
 export type RootStackParamList = {
   Splash: undefined;
@@ -50,7 +50,9 @@ export type RootStackParamList = {
   ChatDetail: { chatId: string; name?: string; avatar?: string };
   VideoPicker: { source?: 'youtube' | 'vimeo' } | undefined;
   CreatePost: { kind?: 'NEWS' | 'EVENT' } | undefined;
-  PostDetail: { id: string };
+  Browse: undefined;
+  HowItWorks: undefined;
+  Admin: undefined;
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -104,14 +106,10 @@ const RootNavigator: React.FC = () => {
       <Stack.Screen name="ChatDetail" component={ChatDetailScreen} />
 
       {/* Posts (news & events) */}
-      <Stack.Screen
-        name="CreatePost"
-        component={CreatePostScreen}
-        options={{ animation: 'slide_from_bottom' }}
-      />
-      {/* PostDetail screen is optional — file 18 may add it. If you don't have it yet,
-          comment this line out OR leave it; we use it from cards as navigation.navigate('PostDetail', { id }) */}
-      {/* <Stack.Screen name="PostDetail" component={PostDetailScreen} /> */}
+      <Stack.Screen name="CreatePost" component={CreatePostScreen} options={{ animation: 'slide_from_bottom' }} />
+
+      {/* Admin (hidden — only reachable from Settings when isAdmin) */}
+      <Stack.Screen name="Admin" component={AdminNavigator} />
     </Stack.Navigator>
   );
 };
