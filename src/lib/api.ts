@@ -804,3 +804,196 @@ export const adminApi = {
   removeSubscription: (userId: string) =>
     request<{ user: AdminUser }>('/admin/subscriptions/remove', { method: 'POST', body: { userId } }),
 };
+
+// =====================================================================
+// CREATORS API (Phase 1+2+3) — profile, follow/subscribe, content, live, events
+// =====================================================================
+
+export type CreatorCategory =
+  | 'PODCASTER' | 'FILMMAKER' | 'MUSICIAN' | 'GAMER' | 'EDUCATOR' | 'OTHER';
+
+export type CreatorStatus = 'PENDING' | 'APPROVED' | 'REJECTED' | 'SUSPENDED';
+
+export type Creator = {
+  id: string;
+  userId: string;
+  username: string;
+  fullName: string | null;
+  avatarUrl: string | null;
+  displayName: string;
+  tagline: string | null;
+  bio: string | null;
+  bannerUrl: string | null;
+  category: CreatorCategory;
+  status: CreatorStatus;
+  isLive: boolean;
+  followerCount: number;
+  subscriberCount: number;
+  socials: Record<string, string> | null;
+  approvedAt: string | null;
+  isFollowing?: boolean;
+  isSubscribed?: boolean;
+};
+
+export type CreatorContentFormat = 'FULL' | 'CLIP' | 'REEL' | 'PODCAST';
+export type UploadStatus =
+  | 'DRAFT' | 'PROCESSING' | 'PENDING_REVIEW' | 'APPROVED' | 'REJECTED';
+
+export type CreatorContent = {
+  id: string;
+  title: string;
+  description: string | null;
+  category: string;
+  format: CreatorContentFormat;
+  source: 'YOUTUBE' | 'BUNNY';
+  uploadStatus: UploadStatus;
+  thumbnailUrl: string | null;
+  hlsUrl: string | null;
+  videoUrl: string | null;
+  durationSec: number | null;
+  viewCount: number;
+  isPremium: boolean;
+  isFeatured: boolean;
+  rejectionReason: string | null;
+  creatorId: string | null;
+  createdAt: string;
+};
+
+export type LiveSession = {
+  id: string;
+  title: string;
+  description: string | null;
+  thumbnailUrl: string | null;
+  category: string;
+  status: 'LIVE' | 'ENDED';
+  viewerCount: number;
+  peakViewers: number;
+  livekitRoom: string;
+  startedAt: string;
+  endedAt: string | null;
+  creatorId: string;
+  creator?: { displayName: string; username: string; avatarUrl: string | null };
+};
+
+export type LiveKitJoin = { token: string; url: string; room: string };
+
+export type CreatorEvent = {
+  id: string;
+  title: string;
+  description: string | null;
+  thumbnailUrl: string | null;
+  scheduledAt: string;
+  endsAt: string | null;
+  status: 'UPCOMING' | 'LIVE' | 'PAST' | 'CANCELED';
+  creatorId: string;
+  creator?: { displayName: string; username: string; avatarUrl: string | null };
+};
+
+type CreatorsPaged<T> = { items: T[]; page: number; limit: number; total: number; hasMore?: boolean };
+
+export const creatorsApi = {
+  // Become / manage my creator profile
+  apply: (input: {
+    displayName: string; tagline?: string; bio?: string;
+    category?: CreatorCategory; socials?: Record<string, string>;
+  }) => request<{ creator: Creator }>('/creators/apply', { method: 'POST', body: input }),
+
+  getMine: () => request<{ creator: Creator | null }>('/creators/me'),
+
+  updateMine: (input: Partial<{
+    displayName: string; tagline: string; bio: string;
+    bannerUrl: string; bannerPublicId: string;
+    category: CreatorCategory; socials: Record<string, string>;
+  }>) => request<{ creator: Creator }>('/creators/me', { method: 'PATCH', body: input }),
+
+  // Discovery
+  list: (params: { category?: CreatorCategory; search?: string; page?: number; limit?: number } = {}) => {
+    const q = new URLSearchParams();
+    if (params.category) q.set('category', params.category);
+    if (params.search) q.set('search', params.search);
+    if (params.page) q.set('page', String(params.page));
+    if (params.limit) q.set('limit', String(params.limit));
+    const s = q.toString();
+    return request<CreatorsPaged<Creator>>(`/creators${s ? `?${s}` : ''}`);
+  },
+
+  liveCreators: (limit = 20) => request<{ items: Creator[] }>(`/creators/live?limit=${limit}`),
+
+  getByUsername: (username: string) =>
+    request<{ creator: Creator }>(`/creators/${encodeURIComponent(username)}`),
+
+  // Follow / Subscribe (by creatorProfile id)
+  follow: (creatorId: string) =>
+    request<{ following: boolean }>(`/creators/${creatorId}/follow`, { method: 'POST' }),
+  unfollow: (creatorId: string) =>
+    request<{ following: boolean }>(`/creators/${creatorId}/follow`, { method: 'DELETE' }),
+  subscribe: (creatorId: string) =>
+    request<{ subscribed: boolean }>(`/creators/${creatorId}/subscribe`, { method: 'POST' }),
+  unsubscribe: (creatorId: string) =>
+    request<{ subscribed: boolean }>(`/creators/${creatorId}/subscribe`, { method: 'DELETE' }),
+
+  // A creator's public content / events
+  contentByUsername: (username: string, format?: CreatorContentFormat) =>
+    request<{ items: CreatorContent[] }>(
+      `/creators/${encodeURIComponent(username)}/content${format ? `?format=${format}` : ''}`
+    ),
+  eventsByUsername: (username: string) =>
+    request<{ items: CreatorEvent[] }>(`/creators/${encodeURIComponent(username)}/events`),
+
+  // My content (creator)
+  myContent: (format?: CreatorContentFormat) =>
+    request<{ items: CreatorContent[] }>(`/creators/me/content${format ? `?format=${format}` : ''}`),
+  createUpload: (input: {
+    title: string; description?: string; category?: string;
+    format?: CreatorContentFormat; isPremium?: boolean;
+  }) => request<{ content: CreatorContent; upload: {
+    endpoint: string; libraryId: string; videoId: string;
+    authorizationSignature: string; authorizationExpire: number;
+  } }>('/creators/me/content', { method: 'POST', body: input }),
+  createFromUrl: (input: {
+    title: string; description?: string; category?: string;
+    format?: CreatorContentFormat; url: string; isPremium?: boolean;
+  }) => request<{ content: CreatorContent }>('/creators/me/content/from-url', { method: 'POST', body: input }),
+  syncContent: (id: string) =>
+    request<{ content: CreatorContent; ready: boolean; bunnyStatus: number; encodeProgress: number | null }>(
+      `/creators/me/content/${id}/sync`, { method: 'POST' }
+    ),
+  deleteContent: (id: string) =>
+    request<{ deleted: boolean }>(`/creators/me/content/${id}`, { method: 'DELETE' }),
+
+  // Live
+  liveSessions: (limit = 20) => request<{ items: LiveSession[] }>(`/creators/live/sessions?limit=${limit}`),
+  startLive: (input: { title: string; description?: string; thumbnailUrl?: string; category?: string }) =>
+    request<{ session: LiveSession; livekit: LiveKitJoin }>('/creators/me/live/start', { method: 'POST', body: input }),
+  endLive: (sessionId: string) =>
+    request<{ session: LiveSession }>(`/creators/me/live/${sessionId}/end`, { method: 'POST' }),
+  joinLive: (sessionId: string) =>
+    request<{ session: LiveSession; livekit: LiveKitJoin }>(`/creators/live/${sessionId}/join`, { method: 'POST' }),
+  leaveLive: (sessionId: string) =>
+    request<{ ok: boolean }>(`/creators/live/${sessionId}/leave`, { method: 'POST' }),
+
+  // Events
+  upcomingEvents: (limit = 20) => request<{ items: CreatorEvent[] }>(`/creators/events/upcoming?limit=${limit}`),
+  createEvent: (input: { title: string; description?: string; thumbnailUrl?: string; scheduledAt: string; endsAt?: string }) =>
+    request<{ event: CreatorEvent }>('/creators/me/events', { method: 'POST', body: input }),
+  updateEvent: (id: string, input: Partial<{ title: string; description: string; thumbnailUrl: string; scheduledAt: string; endsAt: string; status: string }>) =>
+    request<{ event: CreatorEvent }>(`/creators/me/events/${id}`, { method: 'PATCH', body: input }),
+  deleteEvent: (id: string) =>
+    request<{ deleted: boolean }>(`/creators/me/events/${id}`, { method: 'DELETE' }),
+
+  // Admin
+  adminPendingCreators: (page = 1, limit = 24) =>
+    request<CreatorsPaged<Creator>>(`/creators/admin/pending?page=${page}&limit=${limit}`),
+  adminApproveCreator: (id: string) =>
+    request<{ creator: Creator }>(`/creators/admin/${id}/approve`, { method: 'POST' }),
+  adminRejectCreator: (id: string, reason?: string) =>
+    request<{ creator: Creator }>(`/creators/admin/${id}/reject`, { method: 'POST', body: { reason } }),
+  adminPendingContent: (page = 1, limit = 24) =>
+    request<CreatorsPaged<CreatorContent & { creatorName?: string; creatorUsername?: string }>>(
+      `/creators/admin/content/pending?page=${page}&limit=${limit}`
+    ),
+  adminApproveContent: (id: string, isFeatured?: boolean) =>
+    request<{ content: CreatorContent }>(`/creators/admin/content/${id}/approve`, { method: 'POST', body: { isFeatured } }),
+  adminRejectContent: (id: string, reason?: string) =>
+    request<{ content: CreatorContent }>(`/creators/admin/content/${id}/reject`, { method: 'POST', body: { reason } }),
+};

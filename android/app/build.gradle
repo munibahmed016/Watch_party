@@ -1,7 +1,7 @@
 apply plugin: "com.android.application"
 apply plugin: "org.jetbrains.kotlin.android"
 apply plugin: "com.facebook.react"
-
+apply from: file("../../node_modules/react-native-vector-icons/fonts.gradle")
 /**
  * This is the configuration block to customize your React Native Android app.
  * By default you don't need to apply any configuration, just uncomment the lines you need.
@@ -95,13 +95,21 @@ android {
             keyAlias 'androiddebugkey'
             keyPassword 'android'
         }
+        release {
+            if (project.hasProperty('WATCHPARTY_UPLOAD_STORE_FILE')) {
+                storeFile file(WATCHPARTY_UPLOAD_STORE_FILE)
+                storePassword WATCHPARTY_UPLOAD_STORE_PASSWORD
+                keyAlias WATCHPARTY_UPLOAD_KEY_ALIAS
+                keyPassword WATCHPARTY_UPLOAD_KEY_PASSWORD
+            }
+        }
     }
     buildTypes {
         debug {
             signingConfig signingConfigs.debug
         }
         release {
-            signingConfig signingConfigs.debug
+            signingConfig signingConfigs.release
             minifyEnabled enableProguardInReleaseBuilds
             proguardFiles getDefaultProguardFile("proguard-android.txt"), "proguard-rules.pro"
         }
