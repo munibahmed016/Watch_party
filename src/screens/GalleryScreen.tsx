@@ -1,8 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { View, StyleSheet, ActivityIndicator, Alert } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
-import { launchImageLibrary, ImagePickerResponse, MediaType } from 'react-native-image-picker';
-import ScreenContainer from '@/components/ScreenContainer';
+import { launchImageLibrary, ImagePickerResponse, MediaType, PhotoQuality } from 'react-native-image-picker';import ScreenContainer from '@/components/ScreenContainer';
 import BrandHeader from '@/components/BrandHeader';
 import AppText from '@/components/AppText';
 import GradientText from '@/components/GradientText';
@@ -21,7 +20,7 @@ const GalleryScreen = () => {
   useEffect(() => {
     if (launchedRef.current) return;
     launchedRef.current = true;
-    const opts = { mediaType: 'photo' as MediaType, maxWidth: 1024, maxHeight: 1024, quality: 0.85 as const, selectionLimit: 1 };
+    const opts = { mediaType: 'photo' as MediaType, maxWidth: 1024, maxHeight: 1024, quality: 0.85 as PhotoQuality, selectionLimit: 1 };
     launchImageLibrary(opts, async (response: ImagePickerResponse) => {
       if (response.didCancel) return navigation.goBack();
       if (response.errorCode) { Alert.alert('Photo library', response.errorMessage || 'Could not open library.'); return navigation.goBack(); }

@@ -13,9 +13,9 @@ import { BarChart, Distribution, StatCard } from '@/components/admin/AdminCharts
 import colors from '@/constants/colors';
 import spacing from '@/constants/spacing';
 import layout from '@/constants/layout';
-import { adminApi } from '@/lib/api';
+import { adminApi, creatorsApi } from '@/lib/api';
 
-const NavCard: React.FC<{ icon: string; title: string; subtitle: string; onPress: () => void }> = ({ icon, title, subtitle, onPress }) => (
+const NavCard: React.FC<{ icon: string; title: string; subtitle: string; onPress: () => void; badge?: number }> = ({ icon, title, subtitle, onPress, badge }) => (
   <TouchableOpacity onPress={onPress} style={styles.navCard} activeOpacity={0.85}>
     <View style={styles.navIcon}>
       <LinearGradient colors={colors.buttonGradient as unknown as string[]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={StyleSheet.absoluteFillObject} />
@@ -25,6 +25,9 @@ const NavCard: React.FC<{ icon: string; title: string; subtitle: string; onPress
       <AppText bold>{title}</AppText>
       <AppText variant="tiny" color={colors.textSecondary}>{subtitle}</AppText>
     </View>
+    {badge ? (
+      <View style={styles.badge}><AppText variant="tiny" bold color={colors.white}>{badge}</AppText></View>
+    ) : null}
     <Icon name="chevron-forward" size={18} color={colors.textSecondary} />
   </TouchableOpacity>
 );
@@ -33,25 +36,30 @@ const AdminDashboardScreen = () => {
   const navigation = useNavigation<any>();
   const statsQ = useQuery({ queryKey: ['admin', 'stats'], queryFn: () => adminApi.stats() });
   const anQ = useQuery({ queryKey: ['admin', 'analytics'], queryFn: () => adminApi.analytics() });
+  const pendingCreatorsQ = useQuery({ queryKey: ['admin', 'creators', 'pending'], queryFn: () => creatorsApi.adminPendingCreators(1, 50) });
+  const pendingContentQ = useQuery({ queryKey: ['admin', 'content', 'pending'], queryFn: () => creatorsApi.adminPendingContent(1, 50) });
 
   const s = statsQ.data;
   const series = anQ.data?.series || [];
   const subDist = anQ.data?.subscriptionsByPlan || [];
   const loading = statsQ.isLoading || anQ.isLoading;
 
+  const pendingCreators = pendingCreatorsQ.data?.items?.length || 0;
+  const pendingContent = pendingContentQ.data?.items?.length || 0;
+
   return (
     <ScreenContainer>
       <BrandHeader showBack onBack={() => navigation.goBack()}
         infoTitle="Admin dashboard"
-        infoIntro="Live analytics and quick access to manage your platform."
+        infoIntro="Live analytics and full control of your platform."
         infoPoints={[
           { icon: 'stats-chart', title: 'Analytics', text: 'Track signups, rooms and subscriptions over time.' },
-          { icon: 'film', title: 'Content', text: 'Manage your entire content library.' },
+          { icon: 'film', title: 'Content & creators', text: 'Approve creators, review uploads, manage the library.' },
           { icon: 'people', title: 'Users & plans', text: 'Verify, ban, and manage user subscriptions.' },
         ]}
       />
       <ScrollView contentContainerStyle={{ padding: spacing.lg, paddingBottom: 120 }}
-        refreshControl={<RefreshControl refreshing={statsQ.isFetching || anQ.isFetching} onRefresh={() => { statsQ.refetch(); anQ.refetch(); }} tintColor={colors.primary} />}>
+        refreshControl={<RefreshControl refreshing={statsQ.isFetching || anQ.isFetching} onRefresh={() => { statsQ.refetch(); anQ.refetch(); pendingCreatorsQ.refetch(); pendingContentQ.refetch(); }} tintColor={colors.primary} />}>
 
         <GradientText variant="h1" style={styles.title}>Dashboard</GradientText>
 
@@ -89,9 +97,11 @@ const AdminDashboardScreen = () => {
               </View>
             )}
 
-            {/* Navigation */}
+            {/* Navigation — full control */}
             <AppText variant="h3" bold style={{ marginTop: spacing.xl, marginBottom: spacing.sm }}>Manage</AppText>
-            <NavCard icon="film" title="Content" subtitle="Add, edit, feature & delete" onPress={() => navigation.navigate('AdminContent')} />
+            <NavCard icon="ribbon" title="Creator Approvals" subtitle="Approve or reject new creators" badge={pendingCreators} onPress={() => navigation.navigate('AdminCreators')} />
+            <NavCard icon="shield-checkmark" title="Content Review" subtitle="Approve or reject creator uploads" badge={pendingContent} onPress={() => navigation.navigate('AdminReview')} />
+            <NavCard icon="film" title="Content Library" subtitle="Add, feature & delete content" onPress={() => navigation.navigate('AdminContent')} />
             <NavCard icon="people" title="Users" subtitle="Verify, ban, roles & delete" onPress={() => navigation.navigate('AdminUsers')} />
             <NavCard icon="card" title="Subscriptions" subtitle="Plans & user subscriptions" onPress={() => navigation.navigate('AdminSubscriptions')} />
           </>
@@ -107,6 +117,7 @@ const styles = StyleSheet.create({
   card: { backgroundColor: 'rgba(255,255,255,0.04)', borderWidth: 1, borderColor: colors.border, borderRadius: layout.radius.lg, padding: spacing.md, marginTop: spacing.lg },
   navCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.04)', borderWidth: 1, borderColor: colors.border, borderRadius: layout.radius.lg, padding: spacing.md, marginBottom: spacing.sm },
   navIcon: { width: 44, height: 44, borderRadius: 12, overflow: 'hidden', alignItems: 'center', justifyContent: 'center', marginRight: spacing.md },
+  badge: { minWidth: 22, height: 22, borderRadius: 11, backgroundColor: '#FF8A3D', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 6, marginRight: 8 },
 });
 
 export default AdminDashboardScreen;

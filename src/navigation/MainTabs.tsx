@@ -5,18 +5,22 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import LinearGradient from 'react-native-linear-gradient';
 import MaskedView from '@react-native-masked-view/masked-view';
 import Icon from 'react-native-vector-icons/Ionicons';
+import { useQuery } from '@tanstack/react-query';
 import AppText from '@/components/AppText';
 import colors from '@/constants/colors';
+import { notificationsApi } from '@/lib/api';
 
 import HomeScreen from '@/screens/HomeScreen';
 import NewsHotScreen from '@/screens/NewsHotScreen';
 import ChatsScreen from '@/screens/ChatsScreen';
 import SettingsScreen from '@/screens/SettingsScreen';
+import NotificationsScreen from '@/screens/NotificationsScreen';
 
 export type MainTabsParamList = {
   Home: undefined;
   News: undefined;
   Chat: undefined;
+  Alerts: undefined;
   Settings: undefined;
 };
 
@@ -25,7 +29,6 @@ const Tab = createBottomTabNavigator<MainTabsParamList>();
 type TabSpec = {
   name: keyof MainTabsParamList;
   label: string;
-  // either an Ionicons name OR a PNG image
   ionIcon?: string;
   pngIcon?: ImageSourcePropType;
 };
@@ -34,10 +37,11 @@ const TABS: TabSpec[] = [
   { name: 'Home',     label: 'Home',      ionIcon: 'home' },
   { name: 'News',     label: 'New & Hot', pngIcon: require('@/assets/images/new.png') },
   { name: 'Chat',     label: 'Chat',      pngIcon: require('@/assets/images/chat.png') },
+  { name: 'Alerts',   label: 'Alerts',    ionIcon: 'notifications' },
   { name: 'Settings', label: 'Settings',  pngIcon: require('@/assets/images/setting.png') },
 ];
 
-// Gradient-filled Ionicon for active Home tab
+// Gradient-filled Ionicon for active tab
 const GradientIonicon: React.FC<{ name: string; size: number }> = ({ name, size }) => (
   <MaskedView maskElement={<Icon name={name} size={size} color="#000" />}>
     <LinearGradient
@@ -52,6 +56,14 @@ const GradientIonicon: React.FC<{ name: string; size: number }> = ({ name, size 
 const CustomTabBar: React.FC<BottomTabBarProps> = ({ state, descriptors, navigation }) => {
   const insets = useSafeAreaInsets();
   const bottom = Math.max(insets.bottom, 12);
+
+  // unread notifications badge
+  const notifQuery = useQuery({
+    queryKey: ['notifications', 'list'],
+    queryFn: () => notificationsApi.list({ limit: 1 }),
+    refetchInterval: 30000, // poll every 30s for new alerts
+  });
+  const unread = notifQuery.data?.unreadCount || 0;
 
   return (
     <View style={[styles.barWrap, { paddingBottom: bottom }]} pointerEvents="box-none">
@@ -80,6 +92,7 @@ const CustomTabBar: React.FC<BottomTabBarProps> = ({ state, descriptors, navigat
             };
 
             const tint = isFocused ? colors.primary : 'rgba(255,255,255,0.5)';
+            const showBadge = tabSpec.name === 'Alerts' && unread > 0;
 
             return (
               <TouchableOpacity
@@ -90,20 +103,22 @@ const CustomTabBar: React.FC<BottomTabBarProps> = ({ state, descriptors, navigat
                 onPress={onPress}
                 style={styles.tabItem}
                 activeOpacity={0.7}>
-                {tabSpec.pngIcon ? (
-                  <Image
-                    source={tabSpec.pngIcon}
-                    style={[
-                      styles.pngIcon,
-                      { tintColor: tint },
-                    ]}
-                    resizeMode="contain"
-                  />
-                ) : isFocused ? (
-                  <GradientIonicon name={tabSpec.ionIcon!} size={23} />
-                ) : (
-                  <Icon name={tabSpec.ionIcon!} size={23} color={tint} />
-                )}
+                <View>
+                  {tabSpec.pngIcon ? (
+                    <Image source={tabSpec.pngIcon} style={[styles.pngIcon, { tintColor: tint }]} resizeMode="contain" />
+                  ) : isFocused ? (
+                    <GradientIonicon name={tabSpec.ionIcon!} size={23} />
+                  ) : (
+                    <Icon name={tabSpec.ionIcon!} size={23} color={tint} />
+                  )}
+                  {showBadge && (
+                    <View style={styles.badge}>
+                      <AppText variant="tiny" bold color={colors.white} style={{ fontSize: 9 }}>
+                        {unread > 9 ? '9+' : unread}
+                      </AppText>
+                    </View>
+                  )}
+                </View>
                 <AppText
                   variant="tiny"
                   bold={isFocused}
@@ -128,6 +143,7 @@ const MainTabsNavigator: React.FC = () => {
       <Tab.Screen name="Home" component={HomeScreen} />
       <Tab.Screen name="News" component={NewsHotScreen} />
       <Tab.Screen name="Chat" component={ChatsScreen} />
+      <Tab.Screen name="Alerts" component={NotificationsScreen} />
       <Tab.Screen name="Settings" component={SettingsScreen} />
     </Tab.Navigator>
   );
@@ -158,7 +174,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(20,20,42,0.92)',
     borderRadius: 999,
     paddingVertical: 12,
-    paddingHorizontal: 6,
+    paddingHorizontal: 4,
   },
   tabItem: {
     flex: 1,
@@ -171,7 +187,16 @@ const styles = StyleSheet.create({
   },
   tabLabel: {
     marginTop: 4,
-    fontSize: 10,
+    fontSize: 9,
+  },
+  badge: {
+    position: 'absolute',
+    top: -5, right: -8,
+    minWidth: 16, height: 16, borderRadius: 8,
+    backgroundColor: '#FF3B30',
+    alignItems: 'center', justifyContent: 'center',
+    paddingHorizontal: 4,
+    borderWidth: 1.5, borderColor: 'rgba(20,20,42,1)',
   },
 });
 

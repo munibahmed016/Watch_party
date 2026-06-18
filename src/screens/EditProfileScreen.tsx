@@ -5,7 +5,7 @@ import {
 import LinearGradient from 'react-native-linear-gradient';
 import Icon from 'react-native-vector-icons/Ionicons';
 import { useNavigation } from '@react-navigation/native';
-import { launchCamera, launchImageLibrary, ImagePickerResponse, MediaType } from 'react-native-image-picker';
+import { launchCamera, launchImageLibrary, ImagePickerResponse, MediaType, PhotoQuality } from 'react-native-image-picker';
 import ScreenContainer from '@/components/ScreenContainer';
 import BrandHeader from '@/components/BrandHeader';
 import AppText from '@/components/AppText';
@@ -29,7 +29,7 @@ const EditProfileScreen = () => {
   const [uploading, setUploading] = useState(false);
 
   const pickAvatar = (source: 'camera' | 'library') => {
-    const opts = { mediaType: 'photo' as MediaType, maxWidth: 1024, maxHeight: 1024, quality: 0.85 as const };
+    const opts = { mediaType: 'photo' as MediaType, maxWidth: 1024, maxHeight: 1024, quality: 0.85 as PhotoQuality };
     const launcher = source === 'camera' ? launchCamera : launchImageLibrary;
     launcher(opts, async (response: ImagePickerResponse) => {
       if (response.didCancel) return;

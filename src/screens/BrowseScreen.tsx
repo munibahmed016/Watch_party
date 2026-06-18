@@ -90,20 +90,50 @@ const BrowseScreen = () => {
     });
   }, [navigation]);
 
+  // tap a creator badge -> open their profile
+  const openCreator = useCallback((username?: string | null) => {
+    if (username) navigation.navigate('PodcastHostProfile', { username });
+  }, [navigation]);
+
   const onEndReached = useCallback(() => {
     if (listQuery.hasNextPage && !listQuery.isFetchingNextPage) listQuery.fetchNextPage();
   }, [listQuery]);
 
-  const renderCard = useCallback(({ item }: { item: ContentItem }) => (
-    <TouchableOpacity style={styles.card} activeOpacity={0.85} onPress={() => openCreate(item)}>
-      <View style={styles.cardImgWrap}>
-        <Thumb item={item} style={styles.cardImg} />
-        <View style={styles.playOverlay}><View style={styles.playCircle}><Icon name="play" size={14} color={colors.white} /></View></View>
-      </View>
-      <AppText variant="tiny" bold numberOfLines={2} style={styles.cardTitle}>{item.title}</AppText>
-      {item.year && <AppText variant="tiny" color={colors.textMuted} numberOfLines={1}>{item.year}</AppText>}
-    </TouchableOpacity>
-  ), [openCreate]);
+  const renderCard = useCallback(({ item }: { item: ContentItem }) => {
+    const creator = item.creator;
+    return (
+      <TouchableOpacity style={styles.card} activeOpacity={0.85} onPress={() => openCreate(item)}>
+        <View style={styles.cardImgWrap}>
+          <Thumb item={item} style={styles.cardImg} />
+          <View style={styles.playOverlay}><View style={styles.playCircle}><Icon name="play" size={14} color={colors.white} /></View></View>
+          {/* badge: WatchPartyLive original vs creator content */}
+          {creator ? (
+            creator.isLive && (
+              <View style={styles.liveTag}>
+                <View style={styles.liveDot} />
+                <AppText variant="tiny" bold style={{ fontSize: 8 }}>LIVE</AppText>
+              </View>
+            )
+          ) : (
+            <View style={styles.originalTag}>
+              <Icon name="shield-checkmark" size={9} color={colors.white} />
+            </View>
+          )}
+        </View>
+        <AppText variant="tiny" bold numberOfLines={2} style={styles.cardTitle}>{item.title}</AppText>
+        {creator ? (
+          <TouchableOpacity onPress={() => openCreator(creator.username)} activeOpacity={0.7} style={styles.byRow}>
+            <Icon name="person-circle" size={12} color={colors.primary} style={{ marginRight: 3 }} />
+            <AppText variant="tiny" color={colors.primary} numberOfLines={1} style={{ flex: 1 }}>
+              {creator.displayName || `@${creator.username}`}
+            </AppText>
+          </TouchableOpacity>
+        ) : (
+          <AppText variant="tiny" color={colors.textMuted} numberOfLines={1}>WatchPartyLive</AppText>
+        )}
+      </TouchableOpacity>
+    );
+  }, [openCreate, openCreator]);
 
   const initialLoading = listQuery.isLoading && !listQuery.data;
 
@@ -150,6 +180,9 @@ const BrowseScreen = () => {
         </View>
       ) : (
         <FlatList data={items} keyExtractor={(i) => i.id} numColumns={NUM_COLUMNS} renderItem={renderCard} columnWrapperStyle={styles.column} contentContainerStyle={styles.gridContent} showsVerticalScrollIndicator={false} onEndReached={onEndReached} onEndReachedThreshold={0.5}
+          ListHeaderComponent={
+            <GradientText variant="h3" style={styles.gridHeading}>Watch Together on WatchPartyLive</GradientText>
+          }
           ListFooterComponent={listQuery.isFetchingNextPage ? <ActivityIndicator color={colors.primary} style={{ marginVertical: 20 }} /> : <View style={{ height: 120 }} />} />
       )}
     </ScreenContainer>
@@ -168,13 +201,18 @@ const styles = StyleSheet.create({
   pillInactive: { backgroundColor: 'rgba(255,255,255,0.055)', borderWidth: 1, borderColor: colors.border },
   gridPad: { paddingHorizontal: spacing.lg },
   gridContent: { paddingHorizontal: spacing.lg },
+  gridHeading: { marginBottom: spacing.md, lineHeight: 28, paddingBottom: 2 },
   column: { justifyContent: 'space-between', marginBottom: spacing.md },
   card: { width: '31.5%' },
   cardImgWrap: { position: 'relative' },
   cardImg: { width: '100%', aspectRatio: 0.7, borderRadius: layout.radius.md, backgroundColor: colors.surfaceElevated },
   playOverlay: { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center' },
   playCircle: { width: 34, height: 34, borderRadius: 17, backgroundColor: 'rgba(238,48,99,0.85)', alignItems: 'center', justifyContent: 'center' },
+  liveTag: { position: 'absolute', top: 6, left: 6, flexDirection: 'row', alignItems: 'center', backgroundColor: '#FF0000', paddingHorizontal: 5, paddingVertical: 2, borderRadius: 4 },
+  liveDot: { width: 4, height: 4, borderRadius: 2, backgroundColor: colors.white, marginRight: 3 },
+  originalTag: { position: 'absolute', top: 6, right: 6, width: 18, height: 18, borderRadius: 9, backgroundColor: 'rgba(74,81,161,0.9)', alignItems: 'center', justifyContent: 'center' },
   cardTitle: { marginTop: 6 },
+  byRow: { flexDirection: 'row', alignItems: 'center', marginTop: 2 },
   skeletonGrid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between' },
   skeleton: { backgroundColor: colors.surfaceElevated },
   skeletonLine: { height: 9, borderRadius: 4, backgroundColor: colors.surfaceElevated },

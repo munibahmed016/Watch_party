@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState } from 'react';
 import {
   View, StyleSheet, ScrollView, Image, TouchableOpacity, TextInput,
   ActivityIndicator, Alert, FlatList,
@@ -14,39 +14,40 @@ import GradientText from '@/components/GradientText';
 import colors from '@/constants/colors';
 import spacing from '@/constants/spacing';
 import layout from '@/constants/layout';
-import { contentApi, roomsApi, ContentItem } from '@/lib/api';
-import { queryKeys } from '@/lib/queryClient';
+import { creatorsApi, roomsApi, Creator, LiveSession } from '@/lib/api';
 import { showApiError } from '@/hooks/useApiErrorAlert';
 
-const Thumb: React.FC<{ item: ContentItem; style: any }> = ({ item, style }) => {
-  const sources = useMemo(() => {
-    const l: string[] = [];
-    if (item.thumbnailUrl) l.push(item.thumbnailUrl);
-    if (item.videoId) {
-      l.push(`https://img.youtube.com/vi/${item.videoId}/hqdefault.jpg`);
-      l.push(`https://img.youtube.com/vi/${item.videoId}/mqdefault.jpg`);
-    }
-    return l;
-  }, [item.thumbnailUrl, item.videoId]);
-  const [i, setI] = useState(0);
-  const uri = sources[i];
-  if (!uri) return <View style={[style, { backgroundColor: colors.surfaceElevated }]} />;
-  return <Image source={{ uri }} style={style} onError={() => { if (i < sources.length - 1) setI(i + 1); }} />;
+// Avatar with graceful fallback
+const Avatar: React.FC<{ uri?: string | null; style: any }> = ({ uri, style }) => {
+  const [failed, setFailed] = useState(false);
+  if (!uri || failed) {
+    return (
+      <View style={[style, { backgroundColor: colors.surfaceElevated, alignItems: 'center', justifyContent: 'center' }]}>
+        <Icon name="person" size={22} color={colors.textMuted} />
+      </View>
+    );
+  }
+  return <Image source={{ uri }} style={style} onError={() => setFailed(true)} />;
 };
 
 const JoinPodcastScreen = () => {
   const navigation = useNavigation<any>();
   const [code, setCode] = useState('');
 
-  // REAL podcast content from backend
-  const podcastsQuery = useQuery({
-    queryKey: queryKeys.contentList('PODCAST', ''),
-    queryFn: () => contentApi.list({ category: 'PODCAST', limit: 40 }),
+  // Live sessions (the "Live on WatchPartyLive" row)
+  const liveQuery = useQuery({
+    queryKey: ['creators', 'live-sessions'],
+    queryFn: () => creatorsApi.liveSessions(20),
   });
 
-  const all: ContentItem[] = podcastsQuery.data?.items || [];
-  const live = all.slice(0, 6);     // featured as "live now"
-  const more = all.slice(6);
+  // All approved creators (grid)
+  const creatorsQuery = useQuery({
+    queryKey: ['creators', 'list'],
+    queryFn: () => creatorsApi.list({ limit: 40 }),
+  });
+
+  const liveSessions: LiveSession[] = liveQuery.data?.items || [];
+  const creators: Creator[] = creatorsQuery.data?.items || [];
 
   const joinByCodeMutation = useMutation({
     mutationFn: () => roomsApi.joinByCode(code.trim().toUpperCase()),
@@ -54,43 +55,37 @@ const JoinPodcastScreen = () => {
     onError: (err) => showApiError(err, 'Could not join room with that code.'),
   });
 
-  const watchMutation = useMutation({
-    mutationFn: (item: ContentItem) =>
-      roomsApi.create({ name: item.title, videoUrl: item.videoUrl, isPrivate: false } as any),
-    onSuccess: ({ room }: any) => navigation.navigate('Room', { roomId: room.id }),
-    onError: (err) => showApiError(err, 'Could not start the podcast.'),
-  });
-
   const onSubmitCode = () => {
     if (code.trim().length < 4) return Alert.alert('Invalid code', 'Please enter a valid room code.');
     joinByCodeMutation.mutate();
   };
 
+  // Tap a creator -> their profile
+  const openCreator = (username: string) => navigation.navigate('PodcastHostProfile', { username });
+
+  const loading = liveQuery.isLoading || creatorsQuery.isLoading;
+
   return (
     <ScreenContainer>
       <BrandHeader
         infoTitle="Join a podcast"
-        infoIntro="Tune into live podcasts on WatchPartyLive or jump into a friend's room with a code."
+        infoIntro="Discover creators live on WatchPartyLive, explore their channels, or jump into a friend's room with a code."
         infoPoints={[
-          { icon: 'mic', title: 'Live podcasts', text: 'Tap any podcast below to start watching it in a room instantly.' },
+          { icon: 'radio', title: 'Live now', text: 'Tap a creator who is live to join their stream instantly.' },
+          { icon: 'people', title: 'Discover creators', text: 'Browse every creator and open their channel, videos and schedule.' },
           { icon: 'key', title: 'Join by code', text: 'Got a room code from a friend? Enter it up top to join their session.' },
-          { icon: 'people', title: 'Watch together', text: 'Invite friends into your room and react in real time as it plays.' },
         ]}
       />
 
       <FlatList
-        data={more}
-        keyExtractor={(i) => i.id}
-        numColumns={3}
-        columnWrapperStyle={{ paddingHorizontal: spacing.lg, justifyContent: 'space-between' }}
+        data={creators}
+        keyExtractor={(c) => c.id}
+        numColumns={4}
+        columnWrapperStyle={{ paddingHorizontal: spacing.lg, justifyContent: 'flex-start', gap: 12 }}
         contentContainerStyle={{ paddingBottom: 120 }}
         showsVerticalScrollIndicator={false}
         ListHeaderComponent={
           <View>
-            <AppText variant="small" color={colors.textSecondary} center style={{ marginTop: 4, paddingHorizontal: spacing.lg }}>
-              Live podcasts and shows — tap to watch together.
-            </AppText>
-
             {/* Join by code */}
             <View style={styles.codeWrap}>
               <View style={styles.codeBox}>
@@ -112,59 +107,76 @@ const JoinPodcastScreen = () => {
               </TouchableOpacity>
             </View>
 
-            {podcastsQuery.isLoading && (
+            {/* Upcoming Events button */}
+            <TouchableOpacity
+              activeOpacity={0.85}
+              onPress={() => navigation.navigate('Events')}
+              style={styles.eventsBtn}>
+              <Icon name="calendar" size={16} color={colors.primary} style={{ marginRight: 8 }} />
+              <AppText bold color={colors.primary}>Upcoming Events</AppText>
+              <Icon name="chevron-forward" size={16} color={colors.primary} style={{ marginLeft: 'auto' }} />
+            </TouchableOpacity>
+
+            {loading && (
               <View style={styles.center}><ActivityIndicator color={colors.primary} /></View>
             )}
 
-            {/* Live now — horizontal */}
-            {live.length > 0 && (
+            {/* Live on WatchPartyLive — horizontal */}
+            {liveSessions.length > 0 && (
               <>
                 <View style={styles.sectionHeadRow}>
                   <View style={styles.liveDotBig} />
-                  <GradientText variant="h3" style={{ lineHeight: 28, paddingBottom: 2 }}>Live Now</GradientText>
+                  <GradientText variant="h3" style={{ lineHeight: 28, paddingBottom: 2 }}>Live on WatchPartyLive</GradientText>
                 </View>
                 <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.liveRow}>
-                  {live.map((p) => (
-                    <TouchableOpacity key={p.id} style={styles.liveCard} activeOpacity={0.85} onPress={() => watchMutation.mutate(p)}>
-                      <View style={styles.liveImgWrap}>
-                        <Thumb item={p} style={styles.liveImg} />
+                  {liveSessions.map((s) => (
+                    <TouchableOpacity
+                      key={s.id}
+                      style={styles.liveAvatarCard}
+                      activeOpacity={0.85}
+                      onPress={() => s.creator?.username && openCreator(s.creator.username)}>
+                      <View style={styles.liveAvatarWrap}>
+                        <Avatar uri={s.creator?.avatarUrl} style={styles.liveAvatar} />
+                        <View style={styles.liveRing} pointerEvents="none" />
                         <View style={styles.liveBadge}>
                           <View style={styles.liveDot} />
                           <AppText variant="tiny" bold style={{ fontSize: 9 }}>LIVE</AppText>
                         </View>
-                        <View style={styles.playOverlay}>
-                          <View style={styles.playCircle}><Icon name="play" size={16} color={colors.white} /></View>
-                        </View>
                       </View>
-                      <AppText variant="tiny" bold numberOfLines={2} style={{ width: 150, marginTop: 6 }}>{p.title}</AppText>
+                      <AppText variant="tiny" bold numberOfLines={1} style={{ width: 72, marginTop: 6, textAlign: 'center' }}>
+                        {s.creator?.username || s.title}
+                      </AppText>
                     </TouchableOpacity>
                   ))}
                 </ScrollView>
               </>
             )}
 
-            {more.length > 0 && (
-              <GradientText variant="h3" style={styles.allTitle}>All Podcasts</GradientText>
-            )}
+            <GradientText variant="h3" style={styles.allTitle}>Best Suggestion For You</GradientText>
           </View>
         }
         renderItem={({ item }) => (
-          <TouchableOpacity style={styles.gridCard} activeOpacity={0.85} onPress={() => watchMutation.mutate(item)}>
-            <View style={styles.gridImgWrap}>
-              <Thumb item={item} style={styles.gridImg} />
-              <View style={styles.playOverlaySmall}>
-                <View style={styles.playCircleSmall}><Icon name="play" size={12} color={colors.white} /></View>
-              </View>
+          <TouchableOpacity style={styles.gridCard} activeOpacity={0.85} onPress={() => openCreator(item.username)}>
+            <View style={styles.gridAvatarWrap}>
+              <Avatar uri={item.avatarUrl} style={styles.gridAvatar} />
+              {item.isLive && (
+                <View style={styles.gridLiveBadge}>
+                  <View style={styles.liveDot} />
+                  <AppText variant="tiny" bold style={{ fontSize: 8 }}>LIVE</AppText>
+                </View>
+              )}
             </View>
-            <AppText variant="tiny" bold numberOfLines={2} style={{ marginTop: 5 }}>{item.title}</AppText>
+            <AppText variant="tiny" bold numberOfLines={1} style={{ marginTop: 5, width: 72, textAlign: 'center' }}>
+              {item.username}
+            </AppText>
           </TouchableOpacity>
         )}
         ListEmptyComponent={
-          !podcastsQuery.isLoading ? (
+          !loading ? (
             <View style={styles.center}>
-              <Icon name="mic-outline" size={42} color={colors.textMuted} />
+              <Icon name="people-outline" size={42} color={colors.textMuted} />
               <AppText variant="small" color={colors.textSecondary} style={{ marginTop: 8 }} center>
-                No podcasts available yet.
+                No creators yet. Be the first to go live!
               </AppText>
             </View>
           ) : null
@@ -187,25 +199,40 @@ const styles = StyleSheet.create({
     alignItems: 'center', justifyContent: 'center',
     shadowColor: colors.primary, shadowOpacity: 0.4, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, elevation: 5,
   },
+  eventsBtn: {
+    flexDirection: 'row', alignItems: 'center',
+    backgroundColor: 'rgba(238,48,99,0.12)', borderWidth: 1, borderColor: colors.primary,
+    borderRadius: 14, paddingVertical: 13, paddingHorizontal: 16,
+    marginHorizontal: spacing.lg, marginTop: spacing.md,
+  },
   sectionHeadRow: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: spacing.lg, marginTop: spacing.xl, marginBottom: spacing.sm },
   liveDotBig: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#FF0000', marginRight: 8 },
-  liveRow: { paddingLeft: spacing.lg, paddingRight: spacing.md },
-  liveCard: { marginRight: spacing.md, width: 150 },
-  liveImgWrap: { position: 'relative' },
-  liveImg: { width: 150, height: 100, borderRadius: layout.radius.md, backgroundColor: colors.surfaceElevated },
-  liveBadge: {
-    position: 'absolute', top: 6, left: 6, flexDirection: 'row', alignItems: 'center',
-    backgroundColor: 'rgba(0,0,0,0.7)', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4,
+  liveRow: { paddingLeft: spacing.lg, paddingRight: spacing.md, paddingVertical: 4 },
+
+  liveAvatarCard: { marginRight: spacing.lg, alignItems: 'center', width: 72 },
+  liveAvatarWrap: { position: 'relative', width: 64, height: 64 },
+  liveAvatar: { width: 64, height: 64, borderRadius: 32 },
+  liveRing: {
+    ...StyleSheet.absoluteFillObject, borderRadius: 32,
+    borderWidth: 2, borderColor: colors.primary,
   },
-  liveDot: { width: 5, height: 5, borderRadius: 2.5, backgroundColor: '#FF0000', marginRight: 3 },
-  playOverlay: { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center' },
-  playCircle: { width: 36, height: 36, borderRadius: 18, backgroundColor: 'rgba(238,48,99,0.85)', alignItems: 'center', justifyContent: 'center' },
+  liveBadge: {
+    position: 'absolute', bottom: -2, alignSelf: 'center', flexDirection: 'row', alignItems: 'center',
+    backgroundColor: '#FF0000', paddingHorizontal: 5, paddingVertical: 1, borderRadius: 4,
+    left: 0, right: 0, justifyContent: 'center', marginHorizontal: 14,
+  },
+  liveDot: { width: 4, height: 4, borderRadius: 2, backgroundColor: colors.white, marginRight: 3 },
+
   allTitle: { paddingHorizontal: spacing.lg, marginTop: spacing.xl, marginBottom: spacing.md, lineHeight: 28, paddingBottom: 2 },
-  gridCard: { width: '31.5%', marginBottom: spacing.md },
-  gridImgWrap: { position: 'relative' },
-  gridImg: { width: '100%', aspectRatio: 1, borderRadius: layout.radius.md, backgroundColor: colors.surfaceElevated },
-  playOverlaySmall: { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center' },
-  playCircleSmall: { width: 28, height: 28, borderRadius: 14, backgroundColor: 'rgba(238,48,99,0.85)', alignItems: 'center', justifyContent: 'center' },
+
+  gridCard: { alignItems: 'center', marginBottom: spacing.lg, width: 72 },
+  gridAvatarWrap: { position: 'relative', width: 64, height: 64 },
+  gridAvatar: { width: 64, height: 64, borderRadius: 32, borderWidth: 2, borderColor: colors.border2 },
+  gridLiveBadge: {
+    position: 'absolute', bottom: -2, alignSelf: 'center', flexDirection: 'row', alignItems: 'center',
+    backgroundColor: '#FF0000', paddingHorizontal: 4, paddingVertical: 1, borderRadius: 4,
+    left: 8, right: 8, justifyContent: 'center',
+  },
   center: { paddingVertical: spacing.xxl, alignItems: 'center' },
 });
 

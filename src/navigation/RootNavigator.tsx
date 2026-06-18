@@ -1,6 +1,6 @@
 import React from 'react';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
-
+import type { CreatorEvent } from '@/lib/api';
 import SplashScreen from '@/screens/SplashScreen';
 import OnboardingScreen from '@/screens/OnboardingScreen';
 import LoginScreen from '@/screens/LoginScreen';
@@ -26,6 +26,16 @@ import CreatePostScreen from '@/screens/CreatePostScreen';
 import BrowseScreen from '@/screens/BrowseScreen';
 import HowItWorksScreen from '@/screens/HowItWorksScreen';
 import AdminNavigator from '@/navigation/AdminNavigator';
+import PlansScreen from '@/screens/PlansScreen';
+import BecomeCreatorScreen from '@/screens/BecomeCreatorScreen';
+import CreatorUploadScreen from '@/screens/CreatorUploadScreen';
+import CreatorDashboardScreen from '@/screens/CreatorDashboardScreen';
+import MyProfileScreen from '@/screens/MyProfileScreen';
+import GoLiveScreen from '@/screens/GoLiveScreen';
+import CreateEventScreen from '@/screens/CreateEventScreen';
+import EventsScreen from '@/screens/EventsScreen';
+import NotificationsScreen from '@/screens/NotificationsScreen';
+import EventDetailScreen from '@/screens/EventDetailScreen';
 
 export type RootStackParamList = {
   Splash: undefined;
@@ -47,12 +57,22 @@ export type RootStackParamList = {
   JoinPodcast: undefined;
   PodcastDetail: { tmdbId?: number; archiveId?: string; curatedId?: string };
   PodcastHostProfile: { username: string };
+  Plans: undefined;
+  BecomeCreator: undefined;
+  CreatorUpload: undefined;
+  CreatorDashboard: undefined;
+  MyProfile: undefined;
   ChatDetail: { chatId: string; name?: string; avatar?: string };
   VideoPicker: { source?: 'youtube' | 'vimeo' } | undefined;
   CreatePost: { kind?: 'NEWS' | 'EVENT' } | undefined;
   Browse: undefined;
   HowItWorks: undefined;
   Admin: undefined;
+  GoLive: undefined;
+  CreateEvent: undefined;
+Events: undefined;
+Notifications: undefined;
+EventDetail: { event?: CreatorEvent; eventId?: string } | undefined;
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -101,6 +121,18 @@ const RootNavigator: React.FC = () => {
       {/* Podcasts */}
       <Stack.Screen name="JoinPodcast" component={JoinPodcastScreen} />
       <Stack.Screen name="PodcastDetail" component={PodcastDetailScreen} />
+      <Stack.Screen name="GoLive" component={GoLiveScreen} />
+
+
+      <Stack.Screen name="Plans" component={PlansScreen} />
+      <Stack.Screen name="BecomeCreator" component={BecomeCreatorScreen} />
+      <Stack.Screen name="CreatorUpload" component={CreatorUploadScreen} />
+      <Stack.Screen name="CreatorDashboard" component={CreatorDashboardScreen} />
+      <Stack.Screen name="MyProfile" component={MyProfileScreen} />
+      <Stack.Screen name="CreateEvent" component={CreateEventScreen} />
+      <Stack.Screen name="EventDetail" component={EventDetailScreen} />
+<Stack.Screen name="Events" component={EventsScreen} />
+<Stack.Screen name="Notifications" component={NotificationsScreen} />
 
       {/* Chats */}
       <Stack.Screen name="ChatDetail" component={ChatDetailScreen} />

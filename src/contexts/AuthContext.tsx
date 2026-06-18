@@ -32,7 +32,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           userStorage.get(),
         ]);
         if (accessToken && storedUser) {
-          setState({ ready: true, user: storedUser });
+          setState({ ready: true, user: storedUser as any });
           // Connect socket
           getSocket().catch(() => undefined);
           // Refresh /me in background

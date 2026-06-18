@@ -43,6 +43,9 @@ function extractYouTubeId(input?: string): string {
   return '';
 }
 
+// YouTube IFrame HTML. Exposes window.ytPlayer + posts 'ready'/'state' to RN
+// so the app can seek the player to the host's live position and follow
+// play/pause/seek in real time.
 function buildYouTubeHtml(videoId: string, startSeconds?: number): string {
   const start = startSeconds && startSeconds > 2 ? Math.floor(startSeconds) : 0;
   return `<!DOCTYPE html>
@@ -56,11 +59,15 @@ function buildYouTubeHtml(videoId: string, startSeconds?: number): string {
   var tag = document.createElement('script');
   tag.src = "https://www.youtube.com/iframe_api";
   document.body.appendChild(tag);
+  function post(obj){ try { window.ReactNativeWebView && window.ReactNativeWebView.postMessage(JSON.stringify(obj)); } catch(e){} }
   function onYouTubeIframeAPIReady() {
-    new YT.Player('player', {
+    window.ytPlayer = new YT.Player('player', {
       videoId: '${videoId}',
       playerVars: { playsinline:1, autoplay:1, rel:0, modestbranding:1, fs:1, controls:1, start:${start}, origin:'${ORIGIN}' },
-      events: { onReady: function(e){ try { e.target.playVideo(); } catch(err){} } }
+      events: {
+        onReady: function(e){ try { e.target.playVideo(); } catch(err){} post({ type:'ready' }); },
+        onStateChange: function(e){ try { post({ type:'state', state:e.data, position: window.ytPlayer.getCurrentTime() }); } catch(err){} }
+      }
     });
   }
 </script>
@@ -93,6 +100,10 @@ const RoomScreen = () => {
   const lastReceivedUrl = useRef<string>('');
   const didInitialLoad = useRef(false);
 
+  // ---- sync refs ----
+  const playerReadyRef = useRef(false);
+  const lastAppliedSyncRef = useRef(0);
+
   const [currentUrl, setCurrentUrl] = useState('');
   const [webLoading, setWebLoading] = useState(true);
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -114,6 +125,43 @@ const RoomScreen = () => {
       setCurrentUrl(newUrl); // re-renders source for guests
     }
   }, [videoState?.url, currentUrl]);
+
+  // ---- Push host's live position + play/pause into the player ----
+  const applySyncToPlayer = useCallback(() => {
+    if (!playerReadyRef.current || !webviewRef.current) return;
+    const pos = computeExpectedPosition ? computeExpectedPosition() : 0;
+    const playing = !!videoState?.isPlaying;
+    const js =
+      '(function(){try{if(window.ytPlayer && window.ytPlayer.seekTo){' +
+      'window.ytPlayer.seekTo(' + (pos || 0) + ', true);' +
+      (playing ? 'window.ytPlayer.playVideo();' : 'window.ytPlayer.pauseVideo();') +
+      '}}catch(e){}})(); true;';
+    webviewRef.current.injectJavaScript(js);
+  }, [computeExpectedPosition, videoState?.isPlaying]);
+
+  // Player tells us it's ready -> seek to host's live position immediately.
+  const onPlayerMessage = useCallback((event: any) => {
+    let data: any = {};
+    try { data = JSON.parse(event?.nativeEvent?.data || '{}'); } catch { return; }
+    if (data.type === 'ready') {
+      playerReadyRef.current = true;
+      // small delay so the YT player is fully interactive before seeking
+      setTimeout(() => applySyncToPlayer(), 350);
+    }
+  }, [applySyncToPlayer]);
+
+  // Whenever host changes play/pause/seek (serverTime changes), follow it live.
+  useEffect(() => {
+    if (!videoState) return;
+    if (videoState.serverTime === lastAppliedSyncRef.current) return;
+    lastAppliedSyncRef.current = videoState.serverTime;
+    applySyncToPlayer();
+  }, [videoState?.serverTime, videoState?.isPlaying, applySyncToPlayer]);
+
+  // When the video URL changes the player reloads -> wait for 'ready' again.
+  useEffect(() => {
+    playerReadyRef.current = false;
+  }, [currentUrl]);
 
   const onNavStateChange = (navState: WebViewNavigation) => {
     setWebLoading(navState.loading);
@@ -166,6 +214,7 @@ const RoomScreen = () => {
     <WebView
       ref={webviewRef}
       source={initialSource}
+      onMessage={onPlayerMessage}
       onNavigationStateChange={onNavStateChange}
       onShouldStartLoadWithRequest={onShouldStartLoadWithRequest}
       originWhitelist={['*']}

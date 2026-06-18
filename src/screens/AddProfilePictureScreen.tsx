@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { View, StyleSheet, TouchableOpacity, Image, ActivityIndicator, Alert, Platform } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
-import { launchImageLibrary, launchCamera, ImagePickerResponse, MediaType } from 'react-native-image-picker';
+import { launchImageLibrary, launchCamera, ImagePickerResponse, MediaType, PhotoQuality } from 'react-native-image-picker';
 import LinearGradient from 'react-native-linear-gradient';
 import Icon from 'react-native-vector-icons/Ionicons';
 import ScreenContainer from '@/components/ScreenContainer';
@@ -26,7 +26,7 @@ const AddProfilePictureScreen = () => {
       mediaType: 'photo' as MediaType,
       maxWidth: 1024,
       maxHeight: 1024,
-      quality: 0.85 as const,
+      quality: 0.85 as PhotoQuality,
       includeBase64: false,
     };
     const launcher = source === 'camera' ? launchCamera : launchImageLibrary;

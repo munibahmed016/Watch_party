@@ -50,7 +50,7 @@ const GradientText: React.FC<Props> = ({
           bold={bold}
           center={center}
           numberOfLines={numberOfLines}
-          style={[style, styles.hidden]}>
+          style={[style as any, styles.hidden]}>
           {children}
         </AppText>
       </LinearGradient>

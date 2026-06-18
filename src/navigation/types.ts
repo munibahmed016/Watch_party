@@ -18,11 +18,17 @@ export type RootStackParamList = {
   Room: { id?: string } | undefined;
   JoinPodcast: undefined;
   PodcastDetail: { id?: string } | undefined;
-  PodcastHostProfile: undefined;
+  PodcastHostProfile: { username: string };
+  Plans: undefined;
+  BecomeCreator: undefined;
+  CreatorUpload: undefined;
+  CreatorDashboard: undefined;
+  MyProfile: undefined;
   ChatDetail: { id?: string; name?: string } | undefined;
   WebPlayer: undefined;
   ScreenShareInfo: undefined;
   EditProfile: undefined;
+  FriendRequests: undefined;
 };
 
 export type MainTabParamList = {

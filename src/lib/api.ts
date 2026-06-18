@@ -344,6 +344,13 @@ export type ContentItem = {
   rating: number | null;
   viewCount: number;
   isFeatured: boolean;
+  creator?: {
+    id: string;
+    displayName: string;
+    username: string | null;
+    avatarUrl: string | null;
+    isLive: boolean;
+  } | null;
 };
 
 // ---- Admin ----
@@ -852,6 +859,9 @@ export type CreatorContent = {
   videoUrl: string | null;
   durationSec: number | null;
   viewCount: number;
+  likeCount?: number;
+  commentCount?: number;
+  shareCount?: number;
   isPremium: boolean;
   isFeatured: boolean;
   rejectionReason: string | null;
@@ -906,6 +916,11 @@ export const creatorsApi = {
     category: CreatorCategory; socials: Record<string, string>;
   }>) => request<{ creator: Creator }>('/creators/me', { method: 'PATCH', body: input }),
 
+  uploadBanner: async (uri: string, mimeType = 'image/jpeg'): Promise<{ bannerUrl: string | null }> => {
+    const fd = new FormData();
+    fd.append('banner', { uri, name: 'banner.jpg', type: mimeType } as unknown as Blob);
+    return request<{ bannerUrl: string | null }>('/creators/me/banner', { method: 'POST', body: fd });
+  },
   // Discovery
   list: (params: { category?: CreatorCategory; search?: string; page?: number; limit?: number } = {}) => {
     const q = new URLSearchParams();
@@ -943,6 +958,8 @@ export const creatorsApi = {
   // My content (creator)
   myContent: (format?: CreatorContentFormat) =>
     request<{ items: CreatorContent[] }>(`/creators/me/content${format ? `?format=${format}` : ''}`),
+  syncStatus: (contentId: string) =>
+    request<{ content: CreatorContent }>(`/creators/me/content/${contentId}/sync`, { method: 'POST' }),
   createUpload: (input: {
     title: string; description?: string; category?: string;
     format?: CreatorContentFormat; isPremium?: boolean;
@@ -996,4 +1013,121 @@ export const creatorsApi = {
     request<{ content: CreatorContent }>(`/creators/admin/content/${id}/approve`, { method: 'POST', body: { isFeatured } }),
   adminRejectContent: (id: string, reason?: string) =>
     request<{ content: CreatorContent }>(`/creators/admin/content/${id}/reject`, { method: 'POST', body: { reason } }),
+};
+
+// ---- Subscriptions ----
+export type SubscriptionTier = 'BASIC' | 'PRO' | 'ADVANCE';
+
+export type Plan = {
+  tier: SubscriptionTier;
+  name: string;
+  price: number;
+  durationDays: number;
+  color: string;        // hex (silver/gold/platinum)
+  colorName: string;    // 'silver' | 'gold' | 'platinum'
+  gradient: string[];
+  features: string[];
+};
+
+export type MySubscription = {
+  tier: SubscriptionTier;
+  planName: string;
+  color: string;
+  colorName: string;
+  gradient: string[];
+  expiresAt: string | null;
+  isActive: boolean;
+  canCreate: boolean;
+  canGoLive: boolean;
+};
+
+export const subscriptionsApi = {
+  plans: () => request<{ plans: Plan[] }>('/subscriptions/plans'),
+  me: () => request<MySubscription>('/subscriptions/me'),
+  upgrade: (tier: SubscriptionTier) =>
+    request<MySubscription>('/subscriptions/upgrade', { method: 'POST', body: { tier } }),
+  cancel: () => request<MySubscription>('/subscriptions/cancel', { method: 'POST' }),
+};
+
+// ---- Analytics ----
+export type CreatorAnalytics = {
+  creator: string;
+  totals: {
+    followers: number; subscribers: number; content: number;
+    totalViews: number; totalLikes: number; totalComments: number; totalShares: number;
+    liveSessions: number; events: number; rooms: number; roomChats: number;
+  };
+  topContent: Array<{
+    id: string; title: string; format: string; thumbnailUrl: string | null;
+    viewCount: number; likeCount: number; commentCount: number; shareCount: number;
+  }>;
+  events: Array<{ id: string; title: string; status: string; scheduledAt: string; thumbnailUrl: string | null }>;
+  rooms: Array<{ id: string; name: string; code: string; status: string; createdAt: string; memberCount: number; messageCount: number }>;
+  viewsSeries: Array<{ date: string; count: number }>;
+};
+
+export type AdminAnalyticsFull = {
+  users: { total: number; creators: number; pendingCreators: number };
+  subscriptionsByTier: Array<{ tier: string; count: number }>;
+  content: { total: number; approved: number; totalViews: number; totalLikes: number; totalComments: number; totalShares: number };
+  rooms: { total: number; active: number; messages: number };
+  live: { total: number; liveNow: number };
+  events: { total: number };
+  signupsSeries: Array<{ date: string; count: number }>;
+};
+
+export const analyticsApi = {
+  trackView: (contentId: string) =>
+    request<{ ok: boolean }>(`/analytics/view/${contentId}`, { method: 'POST' }),
+  creatorMe: () => request<CreatorAnalytics>('/analytics/creator/me'),
+  creatorFollowers: (page = 1, limit = 50) =>
+    request<{ items: any[]; page: number; limit: number; total: number }>(`/analytics/creator/me/followers?page=${page}&limit=${limit}`),
+  creatorSubscribers: (page = 1, limit = 50) =>
+    request<{ items: any[]; page: number; limit: number; total: number }>(`/analytics/creator/me/subscribers?page=${page}&limit=${limit}`),
+  admin: () => request<AdminAnalyticsFull>('/analytics/admin'),
+  adminCreators: (page = 1, limit = 50) =>
+    request<{ items: any[]; page: number; limit: number; total: number }>(`/analytics/admin/creators?page=${page}&limit=${limit}`),
+};
+
+// ---- My stuff (history) ----
+export type MyRoom = {
+  id: string; code: string; name: string; thumbnailUrl: string | null;
+  status: string; role: string; joinedAt: string; isOwner: boolean;
+  owner: { id: string; username: string; avatarUrl: string | null };
+  memberCount: number; messageCount: number;
+};
+export type MyCreatorLink = {
+  creatorId: string; displayName: string; username: string; avatarUrl: string | null;
+  isLive: boolean; followerCount?: number; tier?: string; followedAt?: string; subscribedAt?: string;
+};
+
+export const meApi = {
+  overview: () => request<{
+    counts: { rooms: number; following: number; subscriptions: number };
+    rooms: MyRoom[]; following: MyCreatorLink[]; subscriptions: MyCreatorLink[];
+  }>('/me/overview'),
+  rooms: () => request<{ items: MyRoom[] }>('/me/rooms'),
+  following: () => request<{ items: MyCreatorLink[] }>('/me/following'),
+  subscriptions: () => request<{ items: MyCreatorLink[] }>('/me/subscriptions'),
+};
+
+// ---- Content social (like / comment / share) ----
+export type ContentComment = {
+  id: string; body: string; createdAt: string;
+  user: { id: string; username: string; fullName: string | null; avatarUrl: string | null } | null;
+};
+
+export const contentSocialApi = {
+  toggleLike: (contentId: string) =>
+    request<{ liked: boolean; likeCount: number }>(`/content/${contentId}/like`, { method: 'POST' }),
+  listComments: (contentId: string, page = 1, limit = 30) =>
+    request<{ items: ContentComment[]; page: number; limit: number; total: number }>(
+      `/content/${contentId}/comments?page=${page}&limit=${limit}`
+    ),
+  addComment: (contentId: string, body: string) =>
+    request<{ comment: ContentComment }>(`/content/${contentId}/comments`, { method: 'POST', body: { body } }),
+  deleteComment: (contentId: string, commentId: string) =>
+    request<{ deleted: boolean }>(`/content/${contentId}/comments/${commentId}`, { method: 'DELETE' }),
+  share: (contentId: string, channel?: string) =>
+    request<{ shared: boolean; shareCount: number }>(`/content/${contentId}/share`, { method: 'POST', body: { channel } }),
 };

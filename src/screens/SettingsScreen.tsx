@@ -10,7 +10,7 @@ import AppText from '@/components/AppText';
 import GradientText from '@/components/GradientText';
 import colors from '@/constants/colors';
 import spacing from '@/constants/spacing';
-import { friendsApi } from '@/lib/api';
+import { friendsApi, subscriptionsApi } from '@/lib/api';
 import { queryKeys } from '@/lib/queryClient';
 import { useAuth } from '@/contexts/AuthContext';
 
@@ -22,6 +22,21 @@ const InfoRow: React.FC<{ icon: string; label: string; value: string }> = ({ ico
       <AppText variant="small" bold numberOfLines={1}>{value}</AppText>
     </View>
   </View>
+);
+
+// Tappable navigation row (for Creator & Plans section)
+const NavRow: React.FC<{ icon: string; label: string; sub?: string; onPress: () => void; tint?: string }> =
+  ({ icon, label, sub, onPress, tint }) => (
+  <TouchableOpacity style={styles.navRow} activeOpacity={0.85} onPress={onPress}>
+    <View style={[styles.infoIconWrap, tint ? { backgroundColor: `${tint}22` } : null]}>
+      <Icon name={icon} size={16} color={tint || colors.primary} />
+    </View>
+    <View style={{ flex: 1 }}>
+      <AppText variant="small" bold numberOfLines={1}>{label}</AppText>
+      {sub ? <AppText variant="tiny" color={colors.textSecondary} numberOfLines={1}>{sub}</AppText> : null}
+    </View>
+    <Icon name="chevron-forward" size={16} color={colors.textMuted} />
+  </TouchableOpacity>
 );
 
 const QuickAction: React.FC<{ icon: string; label: string; onPress?: () => void }> = ({ icon, label, onPress }) => (
@@ -41,6 +56,16 @@ const SettingsScreen = () => {
   });
   const friendsCount = friendsQuery.data?.friends.length || 0;
 
+  // current plan (for the tier color + label)
+  const subQuery = useQuery({ queryKey: ['subscription', 'me'], queryFn: () => subscriptionsApi.me() });
+  const tier = subQuery.data;
+
+  const incomingReqQuery = useQuery({
+    queryKey: queryKeys.friendsIncoming,
+    queryFn: () => friendsApi.incoming(),
+  });
+  const requestCount = incomingReqQuery.data?.requests.length || 0;
+
   const handleSignOut = () => {
     Alert.alert('Sign out', 'Are you sure?', [
       { text: 'Cancel', style: 'cancel' },
@@ -53,20 +78,20 @@ const SettingsScreen = () => {
       <BrandHeader
         showBack={false}
         infoTitle="Your settings"
-        infoIntro="Manage your profile, friends, and account from one place."
+        infoIntro="Manage your profile, plan, creator tools, friends and account."
         infoPoints={[
           { icon: 'create', title: 'Edit profile', text: 'Update your name, username, bio and photo any time.' },
-          { icon: 'person-add', title: 'Add friends', text: 'Find people and grow your watch-party circle.' },
-          { icon: 'log-out', title: 'Sign out', text: 'Safely sign out of your account when you\'re done.' },
+          { icon: 'diamond', title: 'Plans', text: 'Upgrade to Pro or Advance to unlock creator tools.' },
+          { icon: 'cloud-upload', title: 'Creator', text: 'Become a creator, upload content and go live.' },
         ]}
       />
       <ScrollView contentContainerStyle={{ paddingBottom: 120, paddingHorizontal: spacing.lg }} showsVerticalScrollIndicator={false}>
 
         <GradientText variant="h1" center style={styles.pageTitle}>Settings</GradientText>
 
-        {/* Avatar */}
+        {/* Avatar — ring tinted by plan tier */}
         <View style={styles.avatarWrap}>
-          <View style={styles.avatarRing}>
+          <View style={[styles.avatarRing, { borderColor: tier?.color || colors.primary }]}>
             {user?.avatarUrl ? (
               <Image source={{ uri: user.avatarUrl }} style={styles.avatar} />
             ) : (
@@ -87,7 +112,9 @@ const SettingsScreen = () => {
           <AppText variant="h3" bold>{user?.fullName || user?.username || 'Welcome'}</AppText>
           {user?.isVerified && <Icon name="checkmark-circle" size={16} color={colors.primary} style={{ marginLeft: 4 }} />}
         </View>
-        <AppText variant="tiny" color={colors.textSecondary} center>@{user?.username} · {friendsCount} friends</AppText>
+        <AppText variant="tiny" color={colors.textSecondary} center>
+          @{user?.username} · {friendsCount} friends{tier ? ` · ${tier.planName}` : ''}
+        </AppText>
 
         {/* Action pills */}
         <View style={styles.actionRow}>
@@ -106,6 +133,24 @@ const SettingsScreen = () => {
           </TouchableOpacity>
         </View>
 
+        {/* Friend requests row with badge */}
+        <TouchableOpacity
+          style={styles.friendReqRow}
+          activeOpacity={0.85}
+          onPress={() => navigation.navigate('FriendRequests')}>
+          <View style={styles.infoIconWrap}><Icon name="person-add" size={16} color={colors.primary} /></View>
+          <View style={{ flex: 1 }}>
+            <AppText variant="small" bold>Friend Requests</AppText>
+            <AppText variant="tiny" color={colors.textSecondary}>
+              {requestCount > 0 ? `${requestCount} pending request${requestCount === 1 ? '' : 's'}` : 'No pending requests'}
+            </AppText>
+          </View>
+          {requestCount > 0 && (
+            <View style={styles.reqBadge}><AppText variant="tiny" bold color={colors.white}>{requestCount}</AppText></View>
+          )}
+          <Icon name="chevron-forward" size={16} color={colors.textMuted} />
+        </TouchableOpacity>
+
         {/* REAL info rows */}
         <View style={styles.info}>
           <InfoRow icon="mail-outline" label="Email" value={user?.email || '—'} />
@@ -113,6 +158,25 @@ const SettingsScreen = () => {
           <InfoRow icon="shield-checkmark-outline" label="Account status" value={user?.isVerified ? 'Verified' : 'Unverified'} />
           {user?.bio ? <InfoRow icon="document-text-outline" label="Bio" value={user.bio} /> : null}
         </View>
+
+        {/* ===== Creator & Plans (hidden for admins) ===== */}
+        {!(user as any)?.isAdmin && (
+        <>
+        <GradientText variant="h3" style={styles.sectionTitle}>Creator & Plans</GradientText>
+        <View style={styles.info}>
+          <NavRow icon="person-circle" label="My Profile" sub="Rooms, following & subscriptions"
+            onPress={() => navigation.navigate('MyProfile')} />
+          <NavRow icon="diamond" label="Plans" sub={tier ? `Current: ${tier.planName}` : 'Basic / Pro / Advance'}
+            tint={tier?.color} onPress={() => navigation.navigate('Plans')} />
+          <NavRow icon="rocket" label="Become a Creator" sub="Set up your channel"
+            onPress={() => navigation.navigate('BecomeCreator')} />
+          <NavRow icon="cloud-upload" label="Upload Content" sub="Movies, podcasts, clips & reels"
+            onPress={() => navigation.navigate('CreatorUpload')} />
+          <NavRow icon="stats-chart" label="Creator Dashboard" sub="Your views & analytics"
+            onPress={() => navigation.navigate('CreatorDashboard')} />
+        </View>
+        </>
+        )}
 
         {/* Quick actions — real navigation */}
         <View style={styles.quickRow}>
@@ -158,14 +222,18 @@ const styles = StyleSheet.create({
   actionPill: { flex: 1 },
   actBtn: { height: 46, borderRadius: 999, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 12 },
   actBtnGhost: { backgroundColor: 'rgba(255,255,255,0.1)', borderWidth: 1, borderColor: colors.border },
-  info: { marginTop: spacing.xl, backgroundColor: 'rgba(255,255,255,0.04)', borderRadius: 18, borderWidth: 1, borderColor: colors.border, paddingHorizontal: spacing.md, paddingVertical: spacing.xs },
+  info: { marginTop: spacing.md, backgroundColor: 'rgba(255,255,255,0.04)', borderRadius: 18, borderWidth: 1, borderColor: colors.border, paddingHorizontal: spacing.md, paddingVertical: spacing.xs },
   infoRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 12 },
+  navRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 12 },
   infoIconWrap: { width: 36, height: 36, borderRadius: 18, backgroundColor: 'rgba(238,48,99,0.15)', alignItems: 'center', justifyContent: 'center', marginRight: 12 },
+  sectionTitle: { marginTop: spacing.xl, marginBottom: spacing.sm, lineHeight: 28, paddingBottom: 2 },
   quickRow: { flexDirection: 'row', justifyContent: 'space-between', marginTop: spacing.xl, gap: 10 },
   quick: { alignItems: 'center', flex: 1 },
   quickIcon: { width: 66, height: 66, borderRadius: 16, backgroundColor: 'rgba(255,255,255,0.06)', borderWidth: 1, borderColor: colors.border, alignItems: 'center', justifyContent: 'center' },
   adminBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginTop: spacing.xl, paddingVertical: 14, borderRadius: 999, overflow: 'hidden' },
   signOut: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginTop: spacing.lg, paddingVertical: 10 },
+  friendReqRow: { flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.05)', borderWidth: 1, borderColor: colors.border, borderRadius: 18, padding: spacing.md, marginTop: spacing.lg },
+  reqBadge: { minWidth: 22, height: 22, borderRadius: 11, backgroundColor: '#FF3B30', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 6, marginRight: 6 },
 });
 
 export default SettingsScreen;
