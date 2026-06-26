@@ -88,6 +88,20 @@ const PodcastHostProfileScreen = () => {
     onError: (err) => showApiError(err, 'Could not start playback.'),
   });
 
+  // Watch the creator's LIVE stream — find the active session, open the viewer
+  const watchLiveMutation = useMutation({
+    mutationFn: async () => {
+      const { items } = await creatorsApi.liveSessions(50);
+      const mine = items.find((s: any) => s.creator?.username === username);
+      if (!mine) throw new Error('Live stream not found');
+      return mine;
+    },
+    onSuccess: (session: any) => {
+      navigation.navigate('LiveViewer', { sessionId: session.id, title: session.title });
+    },
+    onError: (err) => showApiError(err, 'This stream is not available right now.'),
+  });
+
   if (creatorQuery.isLoading) {
     return <ScreenContainer><BrandHeader /><View style={styles.center}><ActivityIndicator color={colors.primary} /></View></ScreenContainer>;
   }
@@ -141,6 +155,32 @@ const PodcastHostProfileScreen = () => {
             </View>
           )}
         </View>
+
+        {/* Watch Live Now — only when the creator is live */}
+        {creator.isLive && (
+          <View style={{ alignItems: 'center', marginTop: spacing.md }}>
+            <TouchableOpacity
+              activeOpacity={0.85}
+              onPress={() => watchLiveMutation.mutate()}
+              disabled={watchLiveMutation.isPending}
+              style={styles.watchLiveBtn}>
+              <LinearGradient
+                colors={['#FF0000', '#FF4444']}
+                start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
+                style={StyleSheet.absoluteFillObject}
+                pointerEvents="none"
+              />
+              {watchLiveMutation.isPending ? (
+                <ActivityIndicator color={colors.white} />
+              ) : (
+                <>
+                  <View style={styles.watchLiveDot} />
+                  <AppText bold color={colors.white} style={{ marginLeft: 8 }}>Watch Live Now</AppText>
+                </>
+              )}
+            </TouchableOpacity>
+          </View>
+        )}
 
         <View style={{ alignItems: 'center', marginTop: spacing.sm }}>
           <View style={{ flexDirection: 'row', alignItems: 'center' }}>
@@ -286,6 +326,11 @@ const styles = StyleSheet.create({
   avatar: { width: 88, height: 88, borderRadius: 44, borderWidth: 3, borderColor: colors.background, backgroundColor: colors.surfaceElevated },
   liveBadge: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#FF0000', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, marginTop: -10 },
   liveDot: { width: 4, height: 4, borderRadius: 2, backgroundColor: colors.white, marginRight: 3 },
+  watchLiveBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    height: 46, paddingHorizontal: 28, borderRadius: 999, overflow: 'hidden',
+  },
+  watchLiveDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#fff' },
   statsRow: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-around',
     backgroundColor: 'rgba(255,255,255,0.04)', borderWidth: 1, borderColor: colors.border,

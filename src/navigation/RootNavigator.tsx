@@ -39,6 +39,8 @@ import EventDetailScreen from '@/screens/EventDetailScreen';
 import InviteFriendsScreen from '@/screens/InviteFriendsScreen';
 import FriendsListScreen from '@/screens/FriendsListScreen';
 import WatchPartyMoviesScreen from '@/screens/WatchPartyMoviesScreen';
+import LiveViewerScreen from '@/screens/LiveViewerScreen';
+
 
 
 export type RootStackParamList = {
@@ -80,6 +82,7 @@ EventDetail: { event?: CreatorEvent; eventId?: string } | undefined;
 InviteFriends: { roomId: string };
   FriendsList: undefined;
   WatchPartyMovies: undefined;
+  LiveViewer: { sessionId: string; title?: string };
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -108,6 +111,8 @@ const RootNavigator: React.FC = () => {
       <Stack.Screen name="AddProfilePicture" component={AddProfilePictureScreen} />
       <Stack.Screen name="ProfilePictureAdded" component={ProfilePictureAddedScreen} />
       <Stack.Screen name="ContactPermission" component={ContactPermissionScreen} />
+      <Stack.Screen name="LiveViewer" component={LiveViewerScreen} />
+
 
       {/* Friends */}
       <Stack.Screen name="AddFriends" component={AddFriendsScreen} />
