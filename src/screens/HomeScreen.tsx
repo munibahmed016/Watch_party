@@ -240,7 +240,7 @@ const HomeScreen = () => {
 
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.pillRow}>
           <Pill label="Create Room" icon="add" onPress={() => navigation.navigate('CreateRoom')} />
-          <Pill label="Group Watch" icon="people" onPress={() => navigation.navigate('CreateRoom')} />
+          <Pill label="WatchParty Movies" icon="film" onPress={() => navigation.navigate('WatchPartyMovies')} />
           <Pill label="Join podcast" icon="key" onPress={() => navigation.navigate('JoinPodcast')} />
         </ScrollView>
 

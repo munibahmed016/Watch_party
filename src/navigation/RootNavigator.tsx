@@ -36,6 +36,10 @@ import CreateEventScreen from '@/screens/CreateEventScreen';
 import EventsScreen from '@/screens/EventsScreen';
 import NotificationsScreen from '@/screens/NotificationsScreen';
 import EventDetailScreen from '@/screens/EventDetailScreen';
+import InviteFriendsScreen from '@/screens/InviteFriendsScreen';
+import FriendsListScreen from '@/screens/FriendsListScreen';
+import WatchPartyMoviesScreen from '@/screens/WatchPartyMoviesScreen';
+
 
 export type RootStackParamList = {
   Splash: undefined;
@@ -73,6 +77,9 @@ export type RootStackParamList = {
 Events: undefined;
 Notifications: undefined;
 EventDetail: { event?: CreatorEvent; eventId?: string } | undefined;
+InviteFriends: { roomId: string };
+  FriendsList: undefined;
+  WatchPartyMovies: undefined;
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -94,6 +101,8 @@ const RootNavigator: React.FC = () => {
       <Stack.Screen name="VerifyCode" component={VerifyCodeScreen} />
       <Stack.Screen name="ForgotPassword" component={ForgotPasswordScreen} />
       <Stack.Screen name="ResetPassword" component={ResetPasswordScreen} />
+      <Stack.Screen name="WatchPartyMovies" component={WatchPartyMoviesScreen} />
+
 
       {/* Profile setup */}
       <Stack.Screen name="AddProfilePicture" component={AddProfilePictureScreen} />
@@ -103,6 +112,8 @@ const RootNavigator: React.FC = () => {
       {/* Friends */}
       <Stack.Screen name="AddFriends" component={AddFriendsScreen} />
       <Stack.Screen name="FriendRequests" component={FriendRequestsScreen} />
+       <Stack.Screen name="FriendsList" component={FriendsListScreen} />
+      <Stack.Screen name="InviteFriends" component={InviteFriendsScreen} />
 
       {/* Main */}
       <Stack.Screen name="MainTabs" component={MainTabsNavigator} />

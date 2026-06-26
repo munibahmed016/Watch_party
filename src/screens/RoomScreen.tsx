@@ -24,10 +24,7 @@ const VIDEO_HEIGHT = Math.round(SCREEN_H * 0.38);
 const CHAT_PANEL_WIDTH = SCREEN_W * 0.75;
 const REACTIONS = ['❤️', '😂', '😮', '👏', '🔥', '🥺'];
 
-// SAME origin as the web app so any embeddable video that plays on the
-// website also plays here. Loading the YouTube IFrame Player API from
-// youtube.com + this baseUrl fixes the "Error 153" origin problem.
-const ORIGIN = 'https://watchpartylive.com';
+const ORIGIN = 'https://www.youtube.com';
 
 function extractYouTubeId(input?: string): string {
   if (!input) return '';
@@ -43,9 +40,7 @@ function extractYouTubeId(input?: string): string {
   return '';
 }
 
-// YouTube IFrame HTML. Exposes window.ytPlayer + posts 'ready'/'state' to RN
-// so the app can seek the player to the host's live position and follow
-// play/pause/seek in real time.
+// YouTube IFrame HTML. NO origin param (causes Error 5/150 on mobile).
 function buildYouTubeHtml(videoId: string, startSeconds?: number): string {
   const start = startSeconds && startSeconds > 2 ? Math.floor(startSeconds) : 0;
   return `<!DOCTYPE html>
@@ -63,7 +58,7 @@ function buildYouTubeHtml(videoId: string, startSeconds?: number): string {
   function onYouTubeIframeAPIReady() {
     window.ytPlayer = new YT.Player('player', {
       videoId: '${videoId}',
-      playerVars: { playsinline:1, autoplay:1, rel:0, modestbranding:1, fs:1, controls:1, start:${start}, origin:'${ORIGIN}' },
+      playerVars: { playsinline:1, autoplay:1, rel:0, modestbranding:1, fs:1, controls:1, start:${start} },
       events: {
         onReady: function(e){ try { e.target.playVideo(); } catch(err){} post({ type:'ready' }); },
         onStateChange: function(e){ try { post({ type:'state', state:e.data, position: window.ytPlayer.getCurrentTime() }); } catch(err){} }
@@ -74,11 +69,83 @@ function buildYouTubeHtml(videoId: string, startSeconds?: number): string {
 </body></html>`;
 }
 
-// YouTube -> IFrame API HTML (with origin). Non-YouTube -> plain uri.
+function buildHlsHtml(src: string, startSeconds?: number): string {
+  const start = startSeconds && startSeconds > 2 ? Math.floor(startSeconds) : 0;
+  return `<!DOCTYPE html>
+<html><head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+<style>*{margin:0;padding:0}html,body{width:100%;height:100%;background:#000;overflow:hidden}#v{width:100%;height:100%;background:#000}</style>
+</head><body>
+<video id="v" playsinline webkit-playsinline controls autoplay></video>
+<script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.13/dist/hls.min.js"></script>
+<script>
+  var video = document.getElementById('v');
+  var src = ${JSON.stringify(src)};
+  var startAt = ${start};
+  function post(o){ try{ window.ReactNativeWebView && window.ReactNativeWebView.postMessage(JSON.stringify(o)); }catch(e){} }
+  function ready(){ try { if(startAt>0){ video.currentTime = startAt; } video.play(); }catch(e){} post({type:'ready'}); }
+  video.addEventListener('play',  function(){ post({type:'state', state:1, position: video.currentTime}); });
+  video.addEventListener('pause', function(){ post({type:'state', state:2, position: video.currentTime}); });
+  video.addEventListener('seeked',function(){ post({type:'state', state:3, position: video.currentTime}); });
+  window.ytPlayer = {
+    seekTo: function(t){ try{ video.currentTime = t; }catch(e){} },
+    playVideo: function(){ try{ video.play(); }catch(e){} },
+    pauseVideo: function(){ try{ video.pause(); }catch(e){} },
+    getCurrentTime: function(){ return video.currentTime || 0; }
+  };
+  if (video.canPlayType('application/vnd.apple.mpegurl')) {
+    video.src = src;
+    video.addEventListener('loadedmetadata', ready);
+  } else if (window.Hls && window.Hls.isSupported()) {
+    var hls = new Hls();
+    hls.loadSource(src);
+    hls.attachMedia(video);
+    hls.on(Hls.Events.MANIFEST_PARSED, ready);
+    hls.on(Hls.Events.ERROR, function(_e, d){ if(d && d.fatal){ post({type:'error', detail:d.type}); } });
+  } else {
+    video.src = src;
+    video.addEventListener('loadedmetadata', ready);
+  }
+</script>
+</body></html>`;
+}
+
+// Bunny iframe embed (admin uploads) — plays in WebView via iframe.
+function buildBunnyEmbedHtml(embedUrl: string): string {
+  return `<!DOCTYPE html>
+<html><head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+<style>*{margin:0;padding:0}html,body{width:100%;height:100%;background:#000;overflow:hidden}iframe{width:100%;height:100%;border:none}</style>
+</head><body>
+<iframe src="${embedUrl}?autoplay=true&loop=false&muted=false&preload=true&responsive=true"
+  allow="accelerometer;gyroscope;autoplay;encrypted-media;picture-in-picture"
+  allowfullscreen></iframe>
+<script>
+  function post(o){ try{ window.ReactNativeWebView && window.ReactNativeWebView.postMessage(JSON.stringify(o)); }catch(e){} }
+  window.ytPlayer = {
+    seekTo: function(){}, playVideo: function(){}, pauseVideo: function(){}, getCurrentTime: function(){ return 0; }
+  };
+  setTimeout(function(){ post({type:'ready'}); }, 1500);
+</script>
+</body></html>`;
+}
+
+// Bunny embed -> iframe. HLS (.m3u8 / b-cdn) -> hls.js. YouTube -> IFrame API. Else -> uri.
 function buildSource(rawUri?: string, startSeconds?: number): any {
-  const id = extractYouTubeId(rawUri);
-  if (id) return { html: buildYouTubeHtml(id, startSeconds), baseUrl: ORIGIN };
   const s = (rawUri || '').trim();
+  // Bunny iframe embed (admin upload)
+  if (/iframe\.mediadelivery\.net\/embed/i.test(s)) {
+    return { html: buildBunnyEmbedHtml(s), baseUrl: ORIGIN };
+  }
+  // Bunny HLS stream
+  if (/\.m3u8($|\?)/i.test(s) || /b-cdn\.net/i.test(s)) {
+    return { html: buildHlsHtml(s, startSeconds), baseUrl: ORIGIN };
+  }
+  // YouTube
+  const id = extractYouTubeId(s);
+  if (id) return { html: buildYouTubeHtml(id, startSeconds), baseUrl: ORIGIN };
   return { uri: s || 'https://m.youtube.com' };
 }
 
@@ -91,6 +158,7 @@ const RoomScreen = () => {
   const {
     room, videoState, presentUsers, chatMessages, reactions,
     loading, isModerator, changeVideo, sendChat, sendReaction, computeExpectedPosition,
+    play, pause, seek,
   } = useRoom(roomId);
 
   const webviewRef = useRef<WebView>(null);
@@ -100,9 +168,10 @@ const RoomScreen = () => {
   const lastReceivedUrl = useRef<string>('');
   const didInitialLoad = useRef(false);
 
-  // ---- sync refs ----
   const playerReadyRef = useRef(false);
   const lastAppliedSyncRef = useRef(0);
+  const applyingRemoteRef = useRef(false);
+  const lastHostStateRef = useRef<{ playing: boolean; pos: number }>({ playing: false, pos: 0 });
 
   const [currentUrl, setCurrentUrl] = useState('');
   const [webLoading, setWebLoading] = useState(true);
@@ -115,53 +184,70 @@ const RoomScreen = () => {
 
   const chatPanelAnim = useRef(new Animated.Value(CHAT_PANEL_WIDTH)).current;
 
-  // initial url + guest follows host url changes (source is state-driven)
   useEffect(() => {
     const newUrl = videoState?.url;
     if (!newUrl) return;
     if (!currentUrl) { setCurrentUrl(newUrl); lastReceivedUrl.current = newUrl; return; }
     if (newUrl !== currentUrl && newUrl !== lastBroadcastUrl.current) {
       lastReceivedUrl.current = newUrl;
-      setCurrentUrl(newUrl); // re-renders source for guests
+      setCurrentUrl(newUrl);
     }
   }, [videoState?.url, currentUrl]);
 
-  // ---- Push host's live position + play/pause into the player ----
   const applySyncToPlayer = useCallback(() => {
     if (!playerReadyRef.current || !webviewRef.current) return;
     const pos = computeExpectedPosition ? computeExpectedPosition() : 0;
     const playing = !!videoState?.isPlaying;
+    applyingRemoteRef.current = true;
     const js =
       '(function(){try{if(window.ytPlayer && window.ytPlayer.seekTo){' +
       'window.ytPlayer.seekTo(' + (pos || 0) + ', true);' +
       (playing ? 'window.ytPlayer.playVideo();' : 'window.ytPlayer.pauseVideo();') +
       '}}catch(e){}})(); true;';
     webviewRef.current.injectJavaScript(js);
+    setTimeout(() => { applyingRemoteRef.current = false; }, 1200);
   }, [computeExpectedPosition, videoState?.isPlaying]);
 
-  // Player tells us it's ready -> seek to host's live position immediately.
   const onPlayerMessage = useCallback((event: any) => {
     let data: any = {};
     try { data = JSON.parse(event?.nativeEvent?.data || '{}'); } catch { return; }
+
     if (data.type === 'ready') {
       playerReadyRef.current = true;
-      // small delay so the YT player is fully interactive before seeking
       setTimeout(() => applySyncToPlayer(), 350);
+      return;
     }
-  }, [applySyncToPlayer]);
 
-  // Whenever host changes play/pause/seek (serverTime changes), follow it live.
+    if (data.type === 'state') {
+      if (!isModerator) return;
+      if (applyingRemoteRef.current) return;
+
+      const pos = typeof data.position === 'number' ? data.position : 0;
+      const ytState = data.state;
+      const last = lastHostStateRef.current;
+
+      if (ytState === 1) {
+        if (!last.playing) { play?.(pos); }
+        else if (Math.abs(pos - last.pos) > 1.5) { seek?.(pos, true); }
+        lastHostStateRef.current = { playing: true, pos };
+      } else if (ytState === 2) {
+        pause?.(pos);
+        lastHostStateRef.current = { playing: false, pos };
+      } else if (ytState === 3) {
+        if (Math.abs(pos - last.pos) > 1.5) { seek?.(pos, last.playing); }
+        lastHostStateRef.current = { playing: last.playing, pos };
+      }
+    }
+  }, [isModerator, play, pause, seek, applySyncToPlayer]);
+
   useEffect(() => {
     if (!videoState) return;
     if (videoState.serverTime === lastAppliedSyncRef.current) return;
     lastAppliedSyncRef.current = videoState.serverTime;
-    applySyncToPlayer();
-  }, [videoState?.serverTime, videoState?.isPlaying, applySyncToPlayer]);
+    if (!isModerator) applySyncToPlayer();
+  }, [videoState?.serverTime, videoState?.isPlaying, isModerator, applySyncToPlayer]);
 
-  // When the video URL changes the player reloads -> wait for 'ready' again.
-  useEffect(() => {
-    playerReadyRef.current = false;
-  }, [currentUrl]);
+  useEffect(() => { playerReadyRef.current = false; }, [currentUrl]);
 
   const onNavStateChange = (navState: WebViewNavigation) => {
     setWebLoading(navState.loading);
@@ -201,7 +287,6 @@ const RoomScreen = () => {
     return <SafeAreaView style={[styles.root, styles.center]}><ActivityIndicator color={colors.primary} /></SafeAreaView>;
   }
 
-  // first load -> start at host's position (late joiner doesn't restart at 0)
   const rawUri = currentUrl || room.videoUrl || (room as any).videoId || '';
   let startAt = 0;
   if (!didInitialLoad.current) {
@@ -226,7 +311,6 @@ const RoomScreen = () => {
     />
   );
 
-  // ====== FULLSCREEN ======
   if (isFullscreen) {
     return (
       <View style={styles.fullscreenRoot}>
@@ -261,7 +345,6 @@ const RoomScreen = () => {
     );
   }
 
-  // ====== HALF-SCREEN ======
   return (
     <SafeAreaView style={styles.root} edges={['top']}>
       <StatusBar barStyle="light-content" />
@@ -272,8 +355,15 @@ const RoomScreen = () => {
             <AppText bold numberOfLines={1}>{room.name}</AppText>
             <AppText variant="tiny" color={colors.textSecondary}>{presentUsers.length} watching · Code: {room.code}</AppText>
           </View>
-          <TouchableOpacity onPress={() => shareMutation.mutate()} style={styles.headerBtn}>{shareMutation.isPending ? <ActivityIndicator size="small" color="#fff" /> : <Icon name="people" size={20} color={colors.white} />}</TouchableOpacity>
-          <TouchableOpacity onPress={() => setIsFullscreen(true)} style={styles.headerBtn}><Icon name="expand-outline" size={20} color={colors.white} /></TouchableOpacity>
+          {/* Share via social media (WhatsApp / Instagram / copy link) */}
+          <TouchableOpacity onPress={() => shareMutation.mutate()} style={styles.headerBtn}>
+            {shareMutation.isPending ? <ActivityIndicator size="small" color="#fff" /> : <Icon name="share-social" size={19} color={colors.white} />}
+          </TouchableOpacity>
+          {/* Invite WatchParty friends */}
+          <TouchableOpacity onPress={() => navigation.navigate('InviteFriends', { roomId })} style={styles.headerBtn}>
+            <Icon name="person-add" size={19} color={colors.white} />
+          </TouchableOpacity>
+          <TouchableOpacity onPress={() => setIsFullscreen(true)} style={styles.headerBtn}><Icon name="expand-outline" size={19} color={colors.white} /></TouchableOpacity>
         </View>
 
         <View style={[styles.videoWrap, { height: VIDEO_HEIGHT }]}>
@@ -340,7 +430,7 @@ const styles = StyleSheet.create({
   fullscreenRoot: { flex: 1, backgroundColor: '#000' },
   center: { alignItems: 'center', justifyContent: 'center' },
   header: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 8, paddingVertical: 8, backgroundColor: '#0a0a0a' },
-  headerBtn: { width: 36, height: 36, alignItems: 'center', justifyContent: 'center' },
+  headerBtn: { width: 34, height: 36, alignItems: 'center', justifyContent: 'center' },
   videoWrap: { backgroundColor: '#000', borderBottomWidth: 0.5, borderBottomColor: 'rgba(255,255,255,0.1)' },
   webLoader: { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(0,0,0,0.6)' },
   guestBadge: { position: 'absolute', top: 10, left: 10, flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.7)', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 999 },

@@ -56,10 +56,8 @@ export const useRoom = (roomId: string | null) => {
     let mounted = true;
     let cleanupFns: Array<() => void> = [];
 
-    // socket "state" has NO videoUrl -> keep previous (REST) url, don't null it
-    const handleJoined = (data: { roomId: string; state: any | null }) => {
-      if (data.roomId !== roomId || !data.state) return;
-      const st = data.state;
+    // Apply sync state into videoState (no videoUrl in socket -> keep previous).
+    const applyState = (st: any) => {
       setVideoState((prev) => ({
         url: st.videoUrl ?? prev?.url ?? null,
         provider: st.videoProvider ?? prev?.provider ?? null,
@@ -70,7 +68,33 @@ export const useRoom = (roomId: string | null) => {
         serverTime: st.serverTime ?? Date.now(),
       }));
     };
-    const handleState = handleJoined;
+
+    // room:joined -> apply sync state AND seed chat history (last 50 messages).
+    const handleJoined = (data: { roomId: string; state: any | null; messages?: any[] }) => {
+      if (data.roomId !== roomId) return;
+      if (data.state) applyState(data.state);
+      if (Array.isArray(data.messages)) {
+        // Seed history, then merge any live messages already received (de-dupe by id).
+        setChatMessages((prev) => {
+          const seen = new Set<string>();
+          const merged: RoomChatMessage[] = [];
+          for (const m of data.messages as RoomChatMessage[]) {
+            if (!seen.has(m.id)) { seen.add(m.id); merged.push(m); }
+          }
+          for (const m of prev) {
+            if (!seen.has(m.id)) { seen.add(m.id); merged.push(m); }
+          }
+          return merged;
+        });
+      }
+    };
+
+    // room:state (sync request response) -> ONLY update sync, never touch chat.
+    const handleState = (data: { roomId: string; state: any | null }) => {
+      if (data.roomId !== roomId || !data.state) return;
+      applyState(data.state);
+    };
+
     const handlePlay = (d: any) => { if (d.roomId !== roomId) return; setVideoState((p) => p && { ...p, position: d.position, isPlaying: true, serverTime: d.serverTime }); };
     const handlePause = (d: any) => { if (d.roomId !== roomId) return; setVideoState((p) => p && { ...p, position: d.position, isPlaying: false, serverTime: d.serverTime }); };
     const handleSeek = (d: any) => { if (d.roomId !== roomId) return; setVideoState((p) => p && { ...p, position: d.position, isPlaying: d.isPlaying, serverTime: d.serverTime }); };

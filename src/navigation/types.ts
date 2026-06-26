@@ -29,6 +29,8 @@ export type RootStackParamList = {
   ScreenShareInfo: undefined;
   EditProfile: undefined;
   FriendRequests: undefined;
+   InviteFriends: { roomId: string };
+  FriendsList: undefined;
 };
 
 export type MainTabParamList = {

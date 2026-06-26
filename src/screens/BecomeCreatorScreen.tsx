@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, StyleSheet, ScrollView, TextInput, TouchableOpacity, ActivityIndicator, Alert } from 'react-native';
 import LinearGradient from 'react-native-linear-gradient';
 import Icon from 'react-native-vector-icons/Ionicons';
@@ -8,6 +8,7 @@ import ScreenContainer from '@/components/ScreenContainer';
 import BrandHeader from '@/components/BrandHeader';
 import AppText from '@/components/AppText';
 import GradientText from '@/components/GradientText';
+import ConfirmModal from '@/components/ConfirmModal';
 import colors from '@/constants/colors';
 import spacing from '@/constants/spacing';
 import layout from '@/constants/layout';
@@ -24,29 +25,51 @@ const BecomeCreatorScreen = () => {
   const [tagline, setTagline] = useState('');
   const [bio, setBio] = useState('');
   const [category, setCategory] = useState<CreatorCategory>('PODCASTER');
+  const [popup, setPopup] = useState<null | { title: string; message: string; goProfile?: boolean }>(null);
 
   // is the user already a creator?
   const mineQuery = useQuery({ queryKey: ['creator', 'me'], queryFn: () => creatorsApi.getMine() });
   const subQuery = useQuery({ queryKey: ['subscription', 'me'], queryFn: () => subscriptionsApi.me() });
 
+  const existing = mineQuery.data?.creator;
+  const canCreate = subQuery.data?.canCreate;
+
+  // If already applied, show a status popup as soon as we know the status.
+  useEffect(() => {
+    if (!existing) return;
+    if (existing.status === 'PENDING') {
+      setPopup({
+        title: 'Profile under review',
+        message: 'Your creator application has been submitted and is waiting for admin approval. We\'ll notify you once it\'s reviewed.',
+      });
+    } else if (existing.status === 'APPROVED') {
+      setPopup({
+        title: 'You\'re already a creator! 🎉',
+        message: 'Your channel is approved. Head to your profile to manage it.',
+        goProfile: true,
+      });
+    }
+    // REJECTED -> let them re-apply (no popup, show the form)
+  }, [existing?.status]);
+
   const applyMutation = useMutation({
     mutationFn: () => creatorsApi.apply({ displayName: displayName.trim(), tagline: tagline.trim() || undefined, bio: bio.trim() || undefined, category }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['creator', 'me'] });
-      Alert.alert('Submitted!', 'Your creator profile is ready. You can now set up your channel.', [
-        { text: 'OK', onPress: () => navigation.goBack() },
-      ]);
+      setPopup({
+        title: 'Application submitted! 🎉',
+        message: 'Your creator profile has been sent for admin approval. You\'ll be notified once it\'s reviewed.',
+      });
     },
     onError: (err) => showApiError(err, 'Could not submit application.'),
   });
-
-  const existing = mineQuery.data?.creator;
-  const canCreate = subQuery.data?.canCreate;
 
   const onSubmit = () => {
     if (displayName.trim().length < 2) return Alert.alert('Name required', 'Please enter a display name.');
     applyMutation.mutate();
   };
+
+  const isPendingOrApproved = existing?.status === 'PENDING' || existing?.status === 'APPROVED';
 
   return (
     <ScreenContainer>
@@ -63,15 +86,30 @@ const BecomeCreatorScreen = () => {
         <GradientText variant="h2" style={{ lineHeight: 32, paddingBottom: 2 }}>Create your channel</GradientText>
 
         {existing ? (
-          <View style={styles.statusCard}>
-            <Icon name="checkmark-circle" size={20} color={colors.success} style={{ marginRight: 8 }} />
+          <View style={[
+            styles.statusCard,
+            existing.status === 'PENDING' && { backgroundColor: 'rgba(255,176,32,0.12)' },
+            existing.status === 'REJECTED' && { backgroundColor: 'rgba(255,90,90,0.12)' },
+          ]}>
+            <Icon
+              name={existing.status === 'APPROVED' ? 'checkmark-circle' : existing.status === 'PENDING' ? 'hourglass-outline' : existing.status === 'REJECTED' ? 'close-circle' : 'information-circle'}
+              size={20}
+              color={existing.status === 'APPROVED' ? colors.success : existing.status === 'PENDING' ? colors.warning : existing.status === 'REJECTED' ? '#FF5A5A' : colors.primary}
+              style={{ marginRight: 8 }}
+            />
             <AppText variant="small" style={{ flex: 1 }}>
-              You already have a creator profile (@{existing.username}). Status: {existing.status}.
+              {existing.status === 'PENDING'
+                ? 'Your application is under review by our team.'
+                : existing.status === 'APPROVED'
+                ? `You're an approved creator (@${existing.username}).`
+                : existing.status === 'REJECTED'
+                ? 'Your previous application was not approved. You can update your details and re-apply below.'
+                : `Status: ${existing.status}.`}
             </AppText>
           </View>
         ) : null}
 
-        {!canCreate && (
+        {!canCreate && !isPendingOrApproved && (
           <TouchableOpacity onPress={() => navigation.navigate('Plans')} style={styles.upsell} activeOpacity={0.85}>
             <Icon name="lock-closed" size={16} color={colors.warning} style={{ marginRight: 8 }} />
             <AppText variant="small" style={{ flex: 1 }} color={colors.textSecondary}>
@@ -81,32 +119,62 @@ const BecomeCreatorScreen = () => {
           </TouchableOpacity>
         )}
 
-        <Field label="Display name" value={displayName} onChange={setDisplayName} placeholder="e.g. Jack_1555" />
-        <Field label="Tagline" value={tagline} onChange={setTagline} placeholder="One line about your channel" />
-        <Field label="Bio" value={bio} onChange={setBio} placeholder="Tell viewers about yourself" multiline />
+        {/* Hide the form when pending/approved — only show for new or rejected users */}
+        {!isPendingOrApproved && (
+          <>
+            <Field label="Display name" value={displayName} onChange={setDisplayName} placeholder="e.g. Jack_1555" />
+            <Field label="Tagline" value={tagline} onChange={setTagline} placeholder="One line about your channel" />
+            <Field label="Bio" value={bio} onChange={setBio} placeholder="Tell viewers about yourself" multiline />
 
-        <AppText variant="small" color={colors.textSecondary} style={{ marginTop: spacing.md, marginBottom: 8 }}>Category</AppText>
-        <View style={styles.catWrap}>
-          {CATEGORIES.map((c) => {
-            const active = c === category;
-            return (
-              <TouchableOpacity key={c} onPress={() => setCategory(c)} activeOpacity={0.85}
-                style={[styles.catChip, active && { borderColor: colors.primary, backgroundColor: 'rgba(238,48,99,0.15)' }]}>
-                <AppText variant="tiny" bold color={active ? colors.primary : colors.textSecondary}>
-                  {c.charAt(0) + c.slice(1).toLowerCase()}
-                </AppText>
-              </TouchableOpacity>
-            );
-          })}
-        </View>
+            <AppText variant="small" color={colors.textSecondary} style={{ marginTop: spacing.md, marginBottom: 8 }}>Category</AppText>
+            <View style={styles.catWrap}>
+              {CATEGORIES.map((c) => {
+                const active = c === category;
+                return (
+                  <TouchableOpacity key={c} onPress={() => setCategory(c)} activeOpacity={0.85}
+                    style={[styles.catChip, active && { borderColor: colors.primary, backgroundColor: 'rgba(238,48,99,0.15)' }]}>
+                    <AppText variant="tiny" bold color={active ? colors.primary : colors.textSecondary}>
+                      {c.charAt(0) + c.slice(1).toLowerCase()}
+                    </AppText>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
 
-        <TouchableOpacity activeOpacity={0.85} onPress={onSubmit} disabled={applyMutation.isPending} style={styles.submitBtn}>
-          <LinearGradient colors={colors.buttonGradient as unknown as string[]} start={colors.gradientStartPoint} end={colors.gradientEndPoint} style={StyleSheet.absoluteFillObject} pointerEvents="none" />
-          {applyMutation.isPending
-            ? <ActivityIndicator color={colors.white} />
-            : <AppText bold color={colors.white}>{existing ? 'Update Channel' : 'Create Channel'}</AppText>}
-        </TouchableOpacity>
+            <TouchableOpacity activeOpacity={0.85} onPress={onSubmit} disabled={applyMutation.isPending} style={styles.submitBtn}>
+              <LinearGradient colors={colors.buttonGradient as unknown as string[]} start={colors.gradientStartPoint} end={colors.gradientEndPoint} style={StyleSheet.absoluteFillObject} pointerEvents="none" />
+              {applyMutation.isPending
+                ? <ActivityIndicator color={colors.white} />
+                : <AppText bold color={colors.white}>{existing?.status === 'REJECTED' ? 'Re-apply' : 'Create Channel'}</AppText>}
+            </TouchableOpacity>
+          </>
+        )}
+
+        {/* When pending/approved, show a button to leave */}
+        {isPendingOrApproved && (
+          <TouchableOpacity activeOpacity={0.85}
+            onPress={() => existing?.status === 'APPROVED' ? navigation.navigate('MyProfile') : navigation.goBack()}
+            style={styles.submitBtn}>
+            <LinearGradient colors={colors.buttonGradient as unknown as string[]} start={colors.gradientStartPoint} end={colors.gradientEndPoint} style={StyleSheet.absoluteFillObject} pointerEvents="none" />
+            <AppText bold color={colors.white}>{existing?.status === 'APPROVED' ? 'Go to My Profile' : 'Got it'}</AppText>
+          </TouchableOpacity>
+        )}
       </ScrollView>
+
+      <ConfirmModal
+        visible={!!popup}
+        title={popup?.title || ''}
+        message={popup?.message}
+        confirmLabel={popup?.goProfile ? 'Go to Profile' : 'Got it'}
+        cancelLabel="Close"
+        icon={popup?.goProfile ? 'checkmark-circle' : 'hourglass-outline'}
+        onConfirm={() => {
+          const go = popup?.goProfile;
+          setPopup(null);
+          if (go) navigation.navigate('MyProfile');
+        }}
+        onCancel={() => setPopup(null)}
+      />
     </ScreenContainer>
   );
 };

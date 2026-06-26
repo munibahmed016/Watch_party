@@ -735,6 +735,7 @@ export const contentApi = {
     page?: number;
     limit?: number;
     featured?: boolean;
+    adminOnly?: boolean; 
   }) => {
     const qs = new URLSearchParams();
     if (params?.category) qs.set('category', params.category);
@@ -742,6 +743,7 @@ export const contentApi = {
     if (params?.page) qs.set('page', String(params.page));
     if (params?.limit) qs.set('limit', String(params.limit));
     if (params?.featured) qs.set('featured', 'true');
+     if (params?.adminOnly) qs.set('adminOnly', 'true');
     const q = qs.toString();
     return request<{
       items: ContentItem[];
@@ -753,9 +755,9 @@ export const contentApi = {
     }>(`/content${q ? `?${q}` : ''}`);
   },
 
-  categories: () =>
+  categories: (adminOnly = false) =>
     request<{ categories: Array<{ category: ContentCategory; count: number }> }>(
-      '/content/categories'
+      `/content/categories${adminOnly ? '?adminOnly=true' : ''}`
     ),
 
   featured: (limit = 10) =>

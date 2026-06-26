@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import {
-  View, StyleSheet, ScrollView, Image, TouchableOpacity, ActivityIndicator, Alert,
+  View, StyleSheet, ScrollView, Image, TouchableOpacity, ActivityIndicator,
 } from 'react-native';
 import LinearGradient from 'react-native-linear-gradient';
 import Icon from 'react-native-vector-icons/Ionicons';
@@ -11,6 +11,7 @@ import ScreenContainer from '@/components/ScreenContainer';
 import BrandHeader from '@/components/BrandHeader';
 import AppText from '@/components/AppText';
 import GradientText from '@/components/GradientText';
+import ConfirmModal from '@/components/ConfirmModal';
 import colors from '@/constants/colors';
 import spacing from '@/constants/spacing';
 import layout from '@/constants/layout';
@@ -40,6 +41,7 @@ const MyProfileScreen = () => {
   const [tab, setTab] = useState<TabKey>('home');
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
   const [uploadingBanner, setUploadingBanner] = useState(false);
+  const [confirm, setConfirm] = useState<null | { title: string; message: string; onYes: () => void }>(null);
 
   const creatorQuery = useQuery({ queryKey: ['creator', 'me'], queryFn: () => creatorsApi.getMine() });
   const subQuery = useQuery({ queryKey: ['subscription', 'me'], queryFn: () => subscriptionsApi.me() });
@@ -104,36 +106,33 @@ const MyProfileScreen = () => {
   };
 
   const deleteContent = (item: CreatorContent) => {
-    Alert.alert('Delete', `Delete "${item.title}"?`, [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Delete', style: 'destructive',
-        onPress: async () => {
-          try {
-            await creatorsApi.deleteContent(item.id);
-            qc.invalidateQueries({ queryKey: ['creator', 'my-content', 'FULL'] });
-            qc.invalidateQueries({ queryKey: ['creator', 'my-content', 'CLIP'] });
-          } catch (e: any) { showApiError(e, 'Could not delete.'); }
-        },
+    setConfirm({
+      title: 'Delete video?',
+      message: `"${item.title}" will be permanently removed.`,
+      onYes: async () => {
+        setConfirm(null);
+        try {
+          await creatorsApi.deleteContent(item.id);
+          qc.invalidateQueries({ queryKey: ['creator', 'my-content', 'FULL'] });
+          qc.invalidateQueries({ queryKey: ['creator', 'my-content', 'CLIP'] });
+        } catch (e: any) { showApiError(e, 'Could not delete.'); }
       },
-    ]);
+    });
   };
-   const deleteEvent = (item: CreatorEvent) => {
-    Alert.alert('Delete event?', `"${item.title}" will be removed.`, [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Delete', style: 'destructive',
-        onPress: async () => {
-          try {
-            await creatorsApi.deleteEvent(item.id);
-            await qc.invalidateQueries({ queryKey: ['creator', myUsername, 'events'] });
-            await qc.invalidateQueries({ queryKey: ['events', 'upcoming'] });
-          } catch (e) {
-            showApiError(e, 'Could not delete event.');
-          }
-        },
+
+  const deleteEvent = (item: CreatorEvent) => {
+    setConfirm({
+      title: 'Delete event?',
+      message: `"${item.title}" will be removed.`,
+      onYes: async () => {
+        setConfirm(null);
+        try {
+          await creatorsApi.deleteEvent(item.id);
+          await qc.invalidateQueries({ queryKey: ['creator', myUsername, 'events'] });
+          await qc.invalidateQueries({ queryKey: ['events', 'upcoming'] });
+        } catch (e) { showApiError(e, 'Could not delete event.'); }
       },
-    ]);
+    });
   };
 
   const avatarUri = user?.avatarUrl || (creator as any)?.avatarUrl
@@ -320,6 +319,17 @@ const MyProfileScreen = () => {
           )}
         </View>
       </ScrollView>
+
+      <ConfirmModal
+        visible={!!confirm}
+        title={confirm?.title || ''}
+        message={confirm?.message}
+        confirmLabel="Delete"
+        destructive
+        icon="trash-outline"
+        onConfirm={() => confirm?.onYes()}
+        onCancel={() => setConfirm(null)}
+      />
     </ScreenContainer>
   );
 };
