@@ -73,10 +73,17 @@ const GoLiveScreen = () => {
   };
 
   const endLive = async () => {
-    if (!sessionId) { navigation.goBack(); return; }
     try {
-      await creatorsApi.endLive(sessionId);
-    } catch { /* ignore */ }
+      if (sessionId) {
+        await creatorsApi.endLive(sessionId);
+      } else {
+        // No id in state (e.g. screen reopened) — end whatever is currently live
+        await creatorsApi.endMyLive();
+      }
+    } catch {
+      // Last resort: clear any stuck active session with the no-id endpoint
+      try { await creatorsApi.endMyLive(); } catch { /* ignore */ }
+    }
     setJoin(null);
     setSessionId(null);
     navigation.goBack();

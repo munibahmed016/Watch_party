@@ -1,5 +1,5 @@
 // src/screens/RoomScreen.tsx
-import React, { useEffect, useRef, useState, useCallback } from 'react';
+import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import {
   View, StyleSheet, TouchableOpacity, ActivityIndicator, FlatList,
   TextInput, KeyboardAvoidingView, Platform, StatusBar, Animated, Dimensions, Image,
@@ -24,7 +24,10 @@ const VIDEO_HEIGHT = Math.round(SCREEN_H * 0.38);
 const CHAT_PANEL_WIDTH = SCREEN_W * 0.75;
 const REACTIONS = ['❤️', '😂', '😮', '👏', '🔥', '🥺'];
 
-const ORIGIN = 'https://www.youtube.com';
+// Same origin the web app uses for the YouTube IFrame player. Providing a
+// real, consistent origin is what lets embeddable videos play (no origin =
+// Error 152 in a WebView). baseUrl must match this origin.
+const ORIGIN = 'https://watchpartylive.com';
 
 function extractYouTubeId(input?: string): string {
   if (!input) return '';
@@ -40,7 +43,9 @@ function extractYouTubeId(input?: string): string {
   return '';
 }
 
-// YouTube IFrame HTML. NO origin param (causes Error 5/150 on mobile).
+// YouTube IFrame HTML — same setup as the web app (origin set). onError posts
+// the code so RN can fall back to the full mobile page if a video ever blocks
+// embedding (150/152).
 function buildYouTubeHtml(videoId: string, startSeconds?: number): string {
   const start = startSeconds && startSeconds > 2 ? Math.floor(startSeconds) : 0;
   return `<!DOCTYPE html>
@@ -58,10 +63,21 @@ function buildYouTubeHtml(videoId: string, startSeconds?: number): string {
   function onYouTubeIframeAPIReady() {
     window.ytPlayer = new YT.Player('player', {
       videoId: '${videoId}',
-      playerVars: { playsinline:1, autoplay:1, rel:0, modestbranding:1, fs:1, controls:1, start:${start} },
+      playerVars: { playsinline:1, autoplay:1, rel:0, modestbranding:1, fs:1, controls:1, start:${start}, origin:'${ORIGIN}' },
       events: {
         onReady: function(e){ try { e.target.playVideo(); } catch(err){} post({ type:'ready' }); },
-        onStateChange: function(e){ try { post({ type:'state', state:e.data, position: window.ytPlayer.getCurrentTime() }); } catch(err){} }
+        onStateChange: function(e){
+          try {
+            var st = e.data;
+            // Only report real play (1) / pause (2) / ended (0). Buffering (3),
+            // cued (5) and unstarted (-1) fire rapidly at startup on mobile data
+            // and would flood the RN bridge -> freeze. Ignore them.
+            if (st === 0 || st === 1 || st === 2) {
+              post({ type:'state', state: st, position: window.ytPlayer.getCurrentTime() });
+            }
+          } catch(err){}
+        },
+        onError: function(e){ post({ type:'error', code: e.data }); }
       }
     });
   }
@@ -166,11 +182,15 @@ const RoomScreen = () => {
   const inputRef = useRef<TextInput>(null);
   const lastBroadcastUrl = useRef<string>('');
   const lastReceivedUrl = useRef<string>('');
-  const didInitialLoad = useRef(false);
+  // True while the active player is an HTML embed (YouTube/Bunny/HLS). For those
+  // the WebView's top-level URL is just our ORIGIN, NOT the video — so we must
+  // never treat a navigation change as "the host picked a new video".
+  const isHtmlSourceRef = useRef(false);
 
   const playerReadyRef = useRef(false);
   const lastAppliedSyncRef = useRef(0);
   const applyingRemoteRef = useRef(false);
+  const lastInjectRef = useRef(0);
   const lastHostStateRef = useRef<{ playing: boolean; pos: number }>({ playing: false, pos: 0 });
 
   const [currentUrl, setCurrentUrl] = useState('');
@@ -181,8 +201,28 @@ const RoomScreen = () => {
   const [showShare, setShowShare] = useState(false);
   const [shareUrl, setShareUrl] = useState<string | null>(null);
   const [input, setInput] = useState('');
+  // Safety net: if a YouTube video ever blocks embedding (150/152), load the
+  // full mobile page instead. With the correct origin this rarely triggers.
+  const [ytFallbackId, setYtFallbackId] = useState<string | null>(null);
+  const rawUriRef = useRef('');
 
   const chatPanelAnim = useRef(new Animated.Value(CHAT_PANEL_WIDTH)).current;
+
+  // ===== Player source — MEMOIZED =====
+  // Computed only when the actual video (or fallback) changes. This is critical:
+  // if we rebuilt the source object on every render (new chat msg, reaction,
+  // keystroke...) the WebView would reload and the video would keep restarting /
+  // freezing. A stable source + stable key keeps the player mounted and playing.
+  const rawUri = currentUrl || room?.videoUrl || (room as any)?.videoId || '';
+  rawUriRef.current = rawUri;
+  const playerSource = useMemo(() => {
+    if (ytFallbackId) return { uri: `https://m.youtube.com/watch?v=${ytFallbackId}` };
+    const start = computeExpectedPosition ? computeExpectedPosition() : 0;
+    return buildSource(rawUri, start);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rawUri, ytFallbackId]);
+  isHtmlSourceRef.current = !!(playerSource as any).html;
+  const playerKey = ytFallbackId || rawUri || 'player';
 
   useEffect(() => {
     const newUrl = videoState?.url;
@@ -191,11 +231,18 @@ const RoomScreen = () => {
     if (newUrl !== currentUrl && newUrl !== lastBroadcastUrl.current) {
       lastReceivedUrl.current = newUrl;
       setCurrentUrl(newUrl);
+      setYtFallbackId(null); // new video -> reset fallback
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [videoState?.url, currentUrl]);
 
   const applySyncToPlayer = useCallback(() => {
     if (!playerReadyRef.current || !webviewRef.current) return;
+    // Throttle injections so a burst of sync updates can never flood the
+    // WebView (which on a real device can hang the video surface).
+    const now = Date.now();
+    if (now - lastInjectRef.current < 400) return;
+    lastInjectRef.current = now;
     const pos = computeExpectedPosition ? computeExpectedPosition() : 0;
     const playing = !!videoState?.isPlaying;
     applyingRemoteRef.current = true;
@@ -214,7 +261,22 @@ const RoomScreen = () => {
 
     if (data.type === 'ready') {
       playerReadyRef.current = true;
-      setTimeout(() => applySyncToPlayer(), 350);
+      // The host (moderator) is the source of truth: their video must just
+      // autoplay and keep playing. Applying remote sync here was pausing the
+      // host's video ~350ms after it started (videoState.isPlaying still false
+      // before the server round-trip) — THAT is the "loads a little then
+      // freezes" bug. Only viewers snap to the host's position.
+      if (!isModerator) setTimeout(() => applySyncToPlayer(), 350);
+      return;
+    }
+
+    if (data.type === 'error') {
+      // 101/150/152 = embedding disabled; 100 = not found.
+      // Reload as the full mobile YouTube page so the video still plays.
+      if ([100, 101, 150, 152].includes(data.code)) {
+        const id = extractYouTubeId(rawUriRef.current);
+        if (id) setYtFallbackId(id);
+      }
       return;
     }
 
@@ -245,24 +307,37 @@ const RoomScreen = () => {
     if (videoState.serverTime === lastAppliedSyncRef.current) return;
     lastAppliedSyncRef.current = videoState.serverTime;
     if (!isModerator) applySyncToPlayer();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [videoState?.serverTime, videoState?.isPlaying, isModerator, applySyncToPlayer]);
 
-  useEffect(() => { playerReadyRef.current = false; }, [currentUrl]);
+  useEffect(() => { playerReadyRef.current = false; }, [currentUrl, ytFallbackId]);
 
-  const onNavStateChange = (navState: WebViewNavigation) => {
+  const onNavStateChange = useCallback((navState: WebViewNavigation) => {
     setWebLoading(navState.loading);
+    // HTML-embed players (YouTube/Bunny/HLS): the top-level URL is only our
+    // ORIGIN/about:blank, never a real video. Broadcasting it would make the
+    // host overwrite the room video with watchpartylive.com and freeze playback.
+    if (isHtmlSourceRef.current) return;
     if (!isModerator) return;
     if (navState.loading) return;
-    if (navState.url === lastBroadcastUrl.current) return;
-    if (navState.url === lastReceivedUrl.current) return;
-    lastBroadcastUrl.current = navState.url;
-    setCurrentUrl(navState.url);
-    changeVideo(navState.url);
-  };
+    const url = navState.url || '';
+    if (!url || url === 'about:blank') return;
+    if (url.indexOf('watchpartylive.com') !== -1) return;       // our origin, ignore
+    if (url === lastBroadcastUrl.current) return;
+    if (url === lastReceivedUrl.current) return;
+    // Only broadcast a navigation that is actually a YouTube video (full-page
+    // fallback case where the host browses to another clip).
+    if (!extractYouTubeId(url)) return;
+    lastBroadcastUrl.current = url;
+    setCurrentUrl(url);
+    changeVideo(url);
+  }, [isModerator, changeVideo]);
 
   const onShouldStartLoadWithRequest = useCallback((request: any) => {
-    if (!request.url) return false;
-    return request.url.startsWith('http://') || request.url.startsWith('https://');
+    const u = request?.url || '';
+    // Allow internal schemes the player/iframe needs; otherwise only http(s).
+    if (u === 'about:blank' || u.startsWith('data:') || u.startsWith('blob:')) return true;
+    return u.startsWith('http://') || u.startsWith('https://');
   }, []);
 
   useEffect(() => { if (chatMessages.length > 0) requestAnimationFrame(() => chatListRef.current?.scrollToEnd({ animated: true })); }, [chatMessages.length]);
@@ -287,18 +362,13 @@ const RoomScreen = () => {
     return <SafeAreaView style={[styles.root, styles.center]}><ActivityIndicator color={colors.primary} /></SafeAreaView>;
   }
 
-  const rawUri = currentUrl || room.videoUrl || (room as any).videoId || '';
-  let startAt = 0;
-  if (!didInitialLoad.current) {
-    startAt = computeExpectedPosition ? computeExpectedPosition() : 0;
-    if (rawUri) didInitialLoad.current = true;
-  }
-  const initialSource = buildSource(rawUri, startAt);
-
+  // Stable key => the WebView only remounts when the video itself changes.
+  // Re-renders (chat, reactions, typing) reuse the same player instance.
   const WebPlayer = (
     <WebView
+      key={playerKey}
       ref={webviewRef}
-      source={initialSource}
+      source={playerSource}
       onMessage={onPlayerMessage}
       onNavigationStateChange={onNavStateChange}
       onShouldStartLoadWithRequest={onShouldStartLoadWithRequest}
@@ -307,7 +377,10 @@ const RoomScreen = () => {
       allowsInlineMediaPlayback mediaPlaybackRequiresUserAction={false}
       setSupportMultipleWindows={false} sharedCookiesEnabled thirdPartyCookiesEnabled
       mixedContentMode="always"
-      style={{ flex: 1 }}
+      // Hardware layer keeps the video surface from going black on Android.
+      androidLayerType="hardware"
+      nestedScrollEnabled
+      style={styles.webview}
     />
   );
 
@@ -429,6 +502,7 @@ const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: '#0a0a0a' },
   fullscreenRoot: { flex: 1, backgroundColor: '#000' },
   center: { alignItems: 'center', justifyContent: 'center' },
+  webview: { flex: 1, backgroundColor: '#000' },
   header: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 8, paddingVertical: 8, backgroundColor: '#0a0a0a' },
   headerBtn: { width: 34, height: 36, alignItems: 'center', justifyContent: 'center' },
   videoWrap: { backgroundColor: '#000', borderBottomWidth: 0.5, borderBottomColor: 'rgba(255,255,255,0.1)' },

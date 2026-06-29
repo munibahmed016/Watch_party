@@ -88,16 +88,20 @@ const PodcastHostProfileScreen = () => {
     onError: (err) => showApiError(err, 'Could not start playback.'),
   });
 
-  // Watch the creator's LIVE stream — find the active session, open the viewer
+  // Watch the creator's LIVE stream. The profile now returns liveSessionId
+  // directly; fall back to the live-sessions list only if it's missing.
   const watchLiveMutation = useMutation({
     mutationFn: async () => {
+      if (creator?.liveSessionId) {
+        return { id: creator.liveSessionId, title: creator.liveTitle || creator.displayName };
+      }
       const { items } = await creatorsApi.liveSessions(50);
       const mine = items.find((s: any) => s.creator?.username === username);
       if (!mine) throw new Error('Live stream not found');
-      return mine;
+      return { id: mine.id, title: mine.title };
     },
-    onSuccess: (session: any) => {
-      navigation.navigate('LiveViewer', { sessionId: session.id, title: session.title });
+    onSuccess: (session: { id: string; title?: string | null }) => {
+      navigation.navigate('LiveViewer', { sessionId: session.id, title: session.title || undefined });
     },
     onError: (err) => showApiError(err, 'This stream is not available right now.'),
   });

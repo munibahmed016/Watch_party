@@ -283,7 +283,9 @@ export type Chat = {
 
 export type Notification = {
   id: string;
-  type: 'FRIEND_REQUEST' | 'FRIEND_ACCEPTED' | 'ROOM_INVITE' | 'NEW_MESSAGE' | 'SYSTEM';
+  type:
+    | 'FRIEND_REQUEST' | 'FRIEND_ACCEPTED' | 'ROOM_INVITE' | 'NEW_MESSAGE'
+    | 'FOLLOW' | 'SUBSCRIBE' | 'CONTENT_LIKE' | 'COMMENT' | 'LIVE' | 'SYSTEM';
   title: string;
   body: string;
   data: Record<string, unknown> | null;
@@ -460,6 +462,15 @@ export const usersApi = {
 
   updatePushTokens: (input: { fcmToken?: string; apnsToken?: string }) =>
     request<null>('/users/me/push-tokens', { method: 'POST', body: input }),
+
+  // Notification preferences (toggle which notifications you receive)
+  getNotificationPrefs: () =>
+    request<{ prefs: Record<string, boolean> }>('/users/me/notification-prefs'),
+  updateNotificationPrefs: (prefs: Record<string, boolean>) =>
+    request<{ prefs: Record<string, boolean> }>('/users/me/notification-prefs', {
+      method: 'PATCH',
+      body: { prefs },
+    }),
 };
 
 export const friendsApi = {
@@ -842,6 +853,8 @@ export type Creator = {
   approvedAt: string | null;
   isFollowing?: boolean;
   isSubscribed?: boolean;
+  liveSessionId?: string | null;   // active live session (for viewer join)
+  liveTitle?: string | null;
 };
 
 export type CreatorContentFormat = 'FULL' | 'CLIP' | 'REEL' | 'PODCAST';
@@ -986,6 +999,8 @@ export const creatorsApi = {
     request<{ session: LiveSession; livekit: LiveKitJoin }>('/creators/me/live/start', { method: 'POST', body: input }),
   endLive: (sessionId: string) =>
     request<{ session: LiveSession }>(`/creators/me/live/${sessionId}/end`, { method: 'POST' }),
+  endMyLive: () =>
+    request<{ ended: boolean }>('/creators/me/live/end', { method: 'POST' }),
   joinLive: (sessionId: string) =>
     request<{ session: LiveSession; livekit: LiveKitJoin }>(`/creators/live/${sessionId}/join`, { method: 'POST' }),
   leaveLive: (sessionId: string) =>

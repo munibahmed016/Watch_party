@@ -135,12 +135,7 @@ const ChatDetailScreen = () => {
             </AppText>
           </View>
         </View>
-        <TouchableOpacity style={styles.actBtn}>
-          <Icon name="call-outline" size={20} color={colors.white} />
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.actBtn}>
-          <Icon name="videocam-outline" size={22} color={colors.white} />
-        </TouchableOpacity>
+        {/* Call + video icons removed per request. */}
       </View>
 
       <KeyboardAvoidingView

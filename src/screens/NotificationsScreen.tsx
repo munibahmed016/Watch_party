@@ -22,6 +22,7 @@ const ICONS: Record<string, string> = {
   SUBSCRIBE:       'star',
   CONTENT_LIKE:    'thumbs-up',
   COMMENT:         'chatbubble-ellipses',
+  LIVE:            'radio',
   SYSTEM:          'notifications',
 };
 
@@ -73,7 +74,12 @@ const NotificationsScreen = () => {
         navigation.navigate('FriendRequests');
         break;
       case 'FRIEND_ACCEPTED':
-        navigation.navigate('FriendsList');
+        // Open the friend's profile if we know who; else the friends list.
+        if (data.username || data.userId) {
+          navigation.navigate('UserProfile', { username: data.username, userId: data.userId });
+        } else {
+          navigation.navigate('FriendsList');
+        }
         break;
       case 'ROOM_INVITE':
         if (data.roomId) navigation.navigate('Room', { roomId: data.roomId });
@@ -84,12 +90,9 @@ const NotificationsScreen = () => {
         break;
       case 'FOLLOW':
       case 'SUBSCRIBE':
-        // Go to creator's own profile or the follower's profile
-        if (data.creatorId || data.username) {
-          navigation.navigate('PodcastHostProfile', {
-            username: data.username,
-            creatorId: data.creatorId,
-          });
+        // Open the profile of whoever followed / subscribed (the actor).
+        if (data.username || data.userId) {
+          navigation.navigate('UserProfile', { username: data.username, userId: data.userId });
         } else {
           navigation.navigate('MyProfile');
         }
@@ -98,6 +101,14 @@ const NotificationsScreen = () => {
       case 'COMMENT':
         // Go to creator dashboard to see content stats
         navigation.navigate('CreatorDashboard');
+        break;
+      case 'LIVE':
+        // Creator went live — open the live viewer, else their channel
+        if (data.sessionId) {
+          navigation.navigate('LiveViewer', { sessionId: data.sessionId, title: n.title });
+        } else if (data.username) {
+          navigation.navigate('PodcastHostProfile', { username: data.username });
+        }
         break;
       default:
         break;

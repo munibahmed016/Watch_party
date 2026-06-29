@@ -35,12 +35,14 @@ import GoLiveScreen from '@/screens/GoLiveScreen';
 import CreateEventScreen from '@/screens/CreateEventScreen';
 import EventsScreen from '@/screens/EventsScreen';
 import NotificationsScreen from '@/screens/NotificationsScreen';
+import NotificationSettingsScreen from '@/screens/NotificationSettingsScreen';
 import EventDetailScreen from '@/screens/EventDetailScreen';
 import InviteFriendsScreen from '@/screens/InviteFriendsScreen';
 import FriendsListScreen from '@/screens/FriendsListScreen';
 import WatchPartyMoviesScreen from '@/screens/WatchPartyMoviesScreen';
 import LiveViewerScreen from '@/screens/LiveViewerScreen';
-
+import ManageScreen from '@/screens/ManageScreen';
+import UserProfileScreen from '@/screens/UserProfileScreen';
 
 
 export type RootStackParamList = {
@@ -78,11 +80,15 @@ export type RootStackParamList = {
   CreateEvent: undefined;
 Events: undefined;
 Notifications: undefined;
+NotificationSettings: undefined;
 EventDetail: { event?: CreatorEvent; eventId?: string } | undefined;
 InviteFriends: { roomId: string };
   FriendsList: undefined;
   WatchPartyMovies: undefined;
   LiveViewer: { sessionId: string; title?: string };
+  ManageProfile: { tab?: 'rooms' | 'following' | 'subscriptions' | 'followers' | 'subscribers' } | undefined;
+  UserProfile: { username?: string; userId?: string } | undefined;
+
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -112,6 +118,8 @@ const RootNavigator: React.FC = () => {
       <Stack.Screen name="ProfilePictureAdded" component={ProfilePictureAddedScreen} />
       <Stack.Screen name="ContactPermission" component={ContactPermissionScreen} />
       <Stack.Screen name="LiveViewer" component={LiveViewerScreen} />
+      <Stack.Screen name="UserProfile" component={UserProfileScreen} />
+
 
 
       {/* Friends */}
@@ -122,6 +130,8 @@ const RootNavigator: React.FC = () => {
 
       {/* Main */}
       <Stack.Screen name="MainTabs" component={MainTabsNavigator} />
+      <Stack.Screen name="ManageProfile" component={ManageScreen} />
+
 
       {/* Profile */}
       <Stack.Screen name="EditProfile" component={EditProfileScreen} />
@@ -149,6 +159,7 @@ const RootNavigator: React.FC = () => {
       <Stack.Screen name="EventDetail" component={EventDetailScreen} />
 <Stack.Screen name="Events" component={EventsScreen} />
 <Stack.Screen name="Notifications" component={NotificationsScreen} />
+<Stack.Screen name="NotificationSettings" component={NotificationSettingsScreen} />
 
       {/* Chats */}
       <Stack.Screen name="ChatDetail" component={ChatDetailScreen} />

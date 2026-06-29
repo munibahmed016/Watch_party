@@ -29,17 +29,18 @@ export type RootStackParamList = {
   ScreenShareInfo: undefined;
   EditProfile: undefined;
   FriendRequests: undefined;
-   InviteFriends: { roomId: string };
+  NotificationSettings: undefined;
+  InviteFriends: { roomId: string };
   FriendsList: undefined;
+  WatchPartyMovies: undefined;
+  LiveViewer: { sessionId: string; title?: string };
 };
-
 export type MainTabParamList = {
   Home: undefined;
   News: undefined;
   Chats: undefined;
   Settings: undefined;
 };
-
 declare global {
   namespace ReactNavigation {
     interface RootParamList extends RootStackParamList {}

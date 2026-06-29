@@ -1,16 +1,16 @@
-import React from 'react';
-import { View, StyleSheet, Image, TouchableOpacity, ScrollView, Alert } from 'react-native';
+import React, { useState, useEffect, useCallback } from 'react';
+import { View, StyleSheet, Image, TouchableOpacity, ScrollView, Alert, Switch } from 'react-native';
 import LinearGradient from 'react-native-linear-gradient';
 import Icon from 'react-native-vector-icons/Ionicons';
-import { useNavigation } from '@react-navigation/native';
-import { useQuery } from '@tanstack/react-query';
+import { useNavigation, useFocusEffect } from '@react-navigation/native';
+import { useQuery, useMutation } from '@tanstack/react-query';
 import ScreenContainer from '@/components/ScreenContainer';
 import BrandHeader from '@/components/BrandHeader';
 import AppText from '@/components/AppText';
 import GradientText from '@/components/GradientText';
 import colors from '@/constants/colors';
 import spacing from '@/constants/spacing';
-import { friendsApi, subscriptionsApi } from '@/lib/api';
+import { friendsApi, subscriptionsApi, usersApi } from '@/lib/api';
 import { queryKeys } from '@/lib/queryClient';
 import { useAuth } from '@/contexts/AuthContext';
 
@@ -24,9 +24,11 @@ const InfoRow: React.FC<{ icon: string; label: string; value: string }> = ({ ico
   </View>
 );
 
-// Tappable navigation row (for Creator & Plans section)
-const NavRow: React.FC<{ icon: string; label: string; sub?: string; onPress: () => void; tint?: string }> =
-  ({ icon, label, sub, onPress, tint }) => (
+// Tappable navigation row (for Creator & Plans section).
+// `locked` => the feature needs a higher plan: we show a lock instead of the
+// chevron and the onPress shows an "upgrade" popup (handled by the caller).
+const NavRow: React.FC<{ icon: string; label: string; sub?: string; onPress: () => void; tint?: string; locked?: boolean }> =
+  ({ icon, label, sub, onPress, tint, locked }) => (
   <TouchableOpacity style={styles.navRow} activeOpacity={0.85} onPress={onPress}>
     <View style={[styles.infoIconWrap, tint ? { backgroundColor: `${tint}22` } : null]}>
       <Icon name={icon} size={16} color={tint || colors.primary} />
@@ -35,7 +37,9 @@ const NavRow: React.FC<{ icon: string; label: string; sub?: string; onPress: () 
       <AppText variant="small" bold numberOfLines={1}>{label}</AppText>
       {sub ? <AppText variant="tiny" color={colors.textSecondary} numberOfLines={1}>{sub}</AppText> : null}
     </View>
-    <Icon name="chevron-forward" size={16} color={colors.textMuted} />
+    {locked
+      ? <Icon name="lock-closed" size={15} color={colors.textMuted} />
+      : <Icon name="chevron-forward" size={16} color={colors.textMuted} />}
   </TouchableOpacity>
 );
 
@@ -56,15 +60,74 @@ const SettingsScreen = () => {
   });
   const friendsCount = friendsQuery.data?.friends.length || 0;
 
-  // current plan (for the tier color + label)
+  // current plan (for the tier color + label + feature gating)
   const subQuery = useQuery({ queryKey: ['subscription', 'me'], queryFn: () => subscriptionsApi.me() });
   const tier = subQuery.data;
+
+  // Re-check the plan every time this screen comes into focus, so that after the
+  // user upgrades OR downgrades (e.g. Advance -> Basic) on the Plans screen and
+  // comes back, the gates lock/unlock immediately.
+  useFocusEffect(
+    useCallback(() => {
+      subQuery.refetch();
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [])
+  );
+
+  // Plan capabilities (from backend subscription status):
+  //   canCreate  -> Pro (Gold)     : become creator, upload, dashboard
+  //   canGoLive  -> Advance (Plat) : go live
+  // Basic (Silver/free) => both false. Admins always allowed.
+  const isAdmin = !!(user as any)?.isAdmin;
+  const canCreate = isAdmin || !!tier?.canCreate;
+  const canGoLive = isAdmin || !!tier?.canGoLive;
+
+  // Show an upgrade popup for a locked feature, with a shortcut to the Plans screen.
+  const requirePlan = useCallback(
+    (allowed: boolean, planName: string, feature: string, go: () => void) => {
+      if (allowed) { go(); return; }
+      Alert.alert(
+        'Upgrade required',
+        `${feature} is available on the ${planName} plan. Please upgrade your plan to unlock it.`,
+        [
+          { text: 'Not now', style: 'cancel' },
+          { text: 'View Plans', onPress: () => navigation.navigate('Plans') },
+        ]
+      );
+    },
+    [navigation]
+  );
 
   const incomingReqQuery = useQuery({
     queryKey: queryKeys.friendsIncoming,
     queryFn: () => friendsApi.incoming(),
   });
   const requestCount = incomingReqQuery.data?.requests.length || 0;
+
+  // Notification master toggle — turning it off stops new notification alerts
+  const notifPrefsQuery = useQuery({
+    queryKey: ['notification-prefs'],
+    queryFn: () => usersApi.getNotificationPrefs(),
+  });
+  const [notifOn, setNotifOn] = useState(true);
+  useEffect(() => {
+    if (notifPrefsQuery.data?.prefs) {
+      setNotifOn(notifPrefsQuery.data.prefs.ALL !== false);
+    }
+  }, [notifPrefsQuery.data]);
+
+  const notifMutation = useMutation({
+    mutationFn: (on: boolean) => usersApi.updateNotificationPrefs({ ALL: on }),
+    onError: () => {
+      // revert on failure
+      setNotifOn((v) => !v);
+      Alert.alert('Could not update', 'Please try again.');
+    },
+  });
+  const toggleNotif = (v: boolean) => {
+    setNotifOn(v);           // optimistic
+    notifMutation.mutate(v);
+  };
 
   const handleSignOut = () => {
     Alert.alert('Sign out', 'Are you sure?', [
@@ -151,6 +214,41 @@ const SettingsScreen = () => {
           <Icon name="chevron-forward" size={16} color={colors.textMuted} />
         </TouchableOpacity>
 
+        {/* My Friends — full list */}
+        <TouchableOpacity
+          style={styles.friendReqRow}
+          activeOpacity={0.85}
+          onPress={() => navigation.navigate('FriendsList')}>
+          <View style={styles.infoIconWrap}><Icon name="people" size={16} color={colors.primary} /></View>
+          <View style={{ flex: 1 }}>
+            <AppText variant="small" bold>My Friends</AppText>
+            <AppText variant="tiny" color={colors.textSecondary}>
+              {friendsCount > 0 ? `${friendsCount} friend${friendsCount === 1 ? '' : 's'}` : 'No friends yet'}
+            </AppText>
+          </View>
+          <Icon name="chevron-forward" size={16} color={colors.textMuted} />
+        </TouchableOpacity>
+
+        {/* Notifications — quick master toggle + tap to manage each type */}
+        <View style={styles.toggleRow}>
+          <View style={styles.infoIconWrap}><Icon name="notifications" size={16} color={colors.primary} /></View>
+          <TouchableOpacity
+            style={{ flex: 1 }}
+            activeOpacity={0.7}
+            onPress={() => navigation.navigate('NotificationSettings')}>
+            <AppText variant="small" bold>Notifications</AppText>
+            <AppText variant="tiny" color={colors.textSecondary}>
+              {notifOn ? 'Tap to manage · alerts are on' : 'Tap to manage · alerts are off'}
+            </AppText>
+          </TouchableOpacity>
+          <Switch
+            value={notifOn}
+            onValueChange={toggleNotif}
+            trackColor={{ false: 'rgba(255,255,255,0.2)', true: colors.primary }}
+            thumbColor={colors.white}
+          />
+        </View>
+
         {/* REAL info rows */}
         <View style={styles.info}>
           <InfoRow icon="mail-outline" label="Email" value={user?.email || '—'} />
@@ -164,16 +262,35 @@ const SettingsScreen = () => {
         <>
         <GradientText variant="h3" style={styles.sectionTitle}>Creator & Plans</GradientText>
         <View style={styles.info}>
+          {/* Open to everyone */}
           <NavRow icon="person-circle" label="My Profile" sub="Rooms, following & subscriptions"
             onPress={() => navigation.navigate('MyProfile')} />
           <NavRow icon="diamond" label="Plans" sub={tier ? `Current: ${tier.planName}` : 'Basic / Pro / Advance'}
             tint={tier?.color} onPress={() => navigation.navigate('Plans')} />
-          <NavRow icon="rocket" label="Become a Creator" sub="Set up your channel"
-            onPress={() => navigation.navigate('BecomeCreator')} />
-          <NavRow icon="cloud-upload" label="Upload Content" sub="Movies, podcasts, clips & reels"
-            onPress={() => navigation.navigate('CreatorUpload')} />
-          <NavRow icon="stats-chart" label="Creator Dashboard" sub="Your views & analytics"
-            onPress={() => navigation.navigate('CreatorDashboard')} />
+
+          {/* Pro (Gold) features — locked on Basic */}
+          <NavRow icon="rocket" label="Become a Creator"
+            sub={canCreate ? 'Set up your channel' : 'Pro plan · upgrade to unlock'}
+            locked={!canCreate}
+            onPress={() => requirePlan(canCreate, 'Pro', 'Becoming a creator',
+              () => navigation.navigate('BecomeCreator'))} />
+          <NavRow icon="cloud-upload" label="Upload Content"
+            sub={canCreate ? 'Movies, podcasts, clips & reels' : 'Pro plan · upgrade to unlock'}
+            locked={!canCreate}
+            onPress={() => requirePlan(canCreate, 'Pro', 'Uploading content',
+              () => navigation.navigate('CreatorUpload'))} />
+          <NavRow icon="stats-chart" label="Creator Dashboard"
+            sub={canCreate ? 'Your views & analytics' : 'Pro plan · upgrade to unlock'}
+            locked={!canCreate}
+            onPress={() => requirePlan(canCreate, 'Pro', 'The creator dashboard',
+              () => navigation.navigate('CreatorDashboard'))} />
+
+          {/* Advance (Platinum) feature — locked unless canGoLive */}
+          <NavRow icon="radio" label="Go Live"
+            sub={canGoLive ? 'Start a live broadcast' : 'Advance plan · upgrade to unlock'}
+            locked={!canGoLive}
+            onPress={() => requirePlan(canGoLive, 'Advance', 'Going live',
+              () => navigation.navigate('GoLive'))} />
         </View>
         </>
         )}
@@ -233,6 +350,7 @@ const styles = StyleSheet.create({
   adminBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginTop: spacing.xl, paddingVertical: 14, borderRadius: 999, overflow: 'hidden' },
   signOut: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginTop: spacing.lg, paddingVertical: 10 },
   friendReqRow: { flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.05)', borderWidth: 1, borderColor: colors.border, borderRadius: 18, padding: spacing.md, marginTop: spacing.lg },
+  toggleRow: { flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.05)', borderWidth: 1, borderColor: colors.border, borderRadius: 18, padding: spacing.md, marginTop: spacing.lg },
   reqBadge: { minWidth: 22, height: 22, borderRadius: 11, backgroundColor: '#FF3B30', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 6, marginRight: 6 },
 });
 

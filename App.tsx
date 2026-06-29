@@ -10,6 +10,8 @@ import RootNavigator from '@/navigation/RootNavigator';
 import { AuthProvider } from '@/contexts/AuthContext';
 import { queryClient } from '@/lib/queryClient';
 import { linking } from '@/lib/linking';
+import { navigationRef } from '@/navigation/navigationRef';
+import DeepLinkHandler from '@/navigation/DeepLinkHandler';
 import colors from '@/constants/colors';
 
 const navTheme = {
@@ -32,7 +34,10 @@ const App = () => {
         <QueryClientProvider client={queryClient}>
           <AuthProvider>
             <StatusBar barStyle="light-content" backgroundColor="transparent" translucent />
-            <NavigationContainer theme={navTheme} linking={linking}>
+            {/* Catches deep links (invite tokens etc.) and routes via navigationRef.
+                Lives outside NavigationContainer because it uses the global ref. */}
+            <DeepLinkHandler />
+            <NavigationContainer theme={navTheme} linking={linking} ref={navigationRef}>
               <RootNavigator />
             </NavigationContainer>
           </AuthProvider>

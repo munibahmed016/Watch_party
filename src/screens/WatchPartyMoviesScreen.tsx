@@ -19,6 +19,7 @@ import { showApiError } from '@/hooks/useApiErrorAlert';
 const CATEGORY_ICONS: Record<string, string> = {
   MOVIE: 'film',
   SHOW: 'tv',
+  TVSHOW: 'tv',
   DOCUMENTARY: 'earth',
   SPORTS: 'football',
   MUSIC: 'musical-notes',
@@ -26,27 +27,47 @@ const CATEGORY_ICONS: Record<string, string> = {
   KIDS: 'happy',
   COMEDY: 'happy-outline',
   DRAMA: 'theater-masks',
+  ANIME: 'sparkles',
+  CARTOON: 'color-palette',
+  PODCAST: 'mic',
   ALL: 'grid',
 };
+
+// ---- Same filters as the web app: keep ONLY admin-uploaded hosted content ----
+// (exclude creator content AND YouTube content; only admin's Bunny/hosted uploads)
+const isCreatorContent = (it: any) => !!(it.creator || it.creatorId || it.creatorUsername);
+const isYouTubeContent = (it: any) => {
+  const prov = String(it.videoProvider || it.provider || it.contentType || it.source || '').toUpperCase();
+  if (prov.includes('YOUTUBE') || prov === 'YT') return true;
+  const url = String(it.videoUrl || it.url || it.hostedVideoUrl || '');
+  if (/youtube\.com|youtu\.be/i.test(url)) return true;
+  // a YouTube-style 11-char videoId with no hosted/Bunny source
+  const hasHosted =
+    !!(it.hostedVideoUrl || it.bunnyVideoId || it.libraryId || it.bunnyLibraryId) ||
+    /mediadelivery|b-cdn/i.test(url);
+  if (it.videoId && !hasHosted && /^[A-Za-z0-9_-]{11}$/.test(String(it.videoId))) return true;
+  return false;
+};
+const isAdminUpload = (it: any) => !isCreatorContent(it) && !isYouTubeContent(it);
 
 const WatchPartyMoviesScreen = () => {
   const navigation = useNavigation<any>();
   const [activeCategory, setActiveCategory] = useState<string>('ALL');
   const [search, setSearch] = useState('');
 
-  // Load all content + categories
+  // Load admin-only content + categories (backend filters creatorId IS NULL)
   const contentQuery = useQuery({
     queryKey: ['watchparty-movies', activeCategory],
     queryFn: () => contentApi.list({
       category: activeCategory === 'ALL' ? undefined : activeCategory as any,
       limit: 60,
-      adminOnly: true,  // sirf admin-uploaded content, creators ka nahi
+      adminOnly: true,
     }),
   });
 
   const categoriesQuery = useQuery({
     queryKey: ['content-categories'],
-    queryFn: () => contentApi.categories(true),  // sirf admin content ki categories
+    queryFn: () => contentApi.categories(true),
   });
 
   const joinMutation = useMutation({
@@ -63,7 +84,10 @@ const WatchPartyMoviesScreen = () => {
   const categories: string[] = ['ALL', ...(categoriesQuery.data?.categories?.map((c: { category: string; count: number }) => c.category) || [])];
 
   const filtered = useMemo(() => {
-    const items: ContentItem[] = contentQuery.data?.items || [];
+    let items: ContentItem[] = contentQuery.data?.items || [];
+    // Safety net (matches web app): only admin's own hosted uploads —
+    // no creator content, no YouTube content.
+    items = items.filter((it: any) => isAdminUpload(it));
     if (!search.trim()) return items;
     const q = search.trim().toLowerCase();
     return items.filter((i) =>
