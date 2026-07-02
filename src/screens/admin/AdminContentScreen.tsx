@@ -30,15 +30,21 @@ const AdminContentScreen = () => {
   const [cat, setCat] = useState('MOVIE');
   const [featured, setFeatured] = useState(false);
   const [override, setOverride] = useState(false);
-  const [picked, setPicked] = useState<{ uri: string; name: string; type: string } | null>(null);
+  // `size` (bytes) comes straight from the picker — passed through to the
+  // uploader so it can send Bunny the REAL file length instead of a
+  // placeholder, which is what was breaking large uploads.
+  const [picked, setPicked] = useState<{ uri: string; name: string; type: string; size: number } | null>(null);
   const [uploading, setUploading] = useState(false);
+  // Live progress (%) for large uploads so admin can see it's working instead
+  // of wondering if a big movie upload has frozen.
+  const [uploadPct, setUploadPct] = useState(0);
 
   const [search, setSearch] = useState('');
   const [filterCat, setFilterCat] = useState<string | null>(null);
 
   const listQ = useQuery({ queryKey: ['admin', 'content'], queryFn: () => contentApi.list({ limit: 500 }) });
 
-  const resetForm = () => { setTitle(''); setUrl(''); setFeatured(false); setOverride(false); setPicked(null); };
+  const resetForm = () => { setTitle(''); setUrl(''); setFeatured(false); setOverride(false); setPicked(null); setUploadPct(0); };
 
   // Add by YouTube/URL link (copyright-checked on server; override bypasses)
   const addLink = useMutation({
@@ -63,7 +69,7 @@ const AdminContentScreen = () => {
     if (res.didCancel) return;
     const a = res.assets?.[0];
     if (!a?.uri) { Alert.alert('No file', 'Could not read the selected video.'); return; }
-    setPicked({ uri: a.uri, name: a.fileName || 'video.mp4', type: a.type || 'video/mp4' });
+    setPicked({ uri: a.uri, name: a.fileName || 'video.mp4', type: a.type || 'video/mp4', size: a.fileSize || 0 });
     if (!title) setTitle((a.fileName || '').replace(/\.[^.]+$/, ''));
   };
 
@@ -73,15 +79,20 @@ const AdminContentScreen = () => {
     if (!picked) return Alert.alert('No file', 'Please choose a video first.');
     try {
       setUploading(true);
+      setUploadPct(0);
       const { upload } = await creatorsApi.createUpload({ title: title.trim(), format: 'FULL', category: cat } as any);
-      await uploadToBunny(picked.uri, picked.name, picked.type, upload);
+      // Pass the real file size through so bunnyUpload sends Bunny the correct
+      // Upload-Length (large movies were failing/corrupting without this),
+      // and show live progress so a multi-GB upload doesn't look frozen.
+      await uploadToBunny(picked.uri, picked.name, picked.type, upload, (pct) => setUploadPct(pct), picked.size);
       resetForm();
       qc.invalidateQueries({ queryKey: ['admin', 'content'] });
       Alert.alert('Uploading', 'Your video is being processed and will appear shortly.');
     } catch (e: any) {
-      Alert.alert('Upload failed', e?.message || 'Something went wrong.');
+      Alert.alert('Upload failed', e?.message || 'Something went wrong. For very large files, make sure you have a stable Wi-Fi connection and try again.');
     } finally {
       setUploading(false);
+      setUploadPct(0);
     }
   };
 
@@ -105,6 +116,12 @@ const AdminContentScreen = () => {
   }, [listQ.data, filterCat, search]);
 
   const busy = uploading || addLink.isPending;
+
+  const fmtSize = (bytes: number) => {
+    if (!bytes) return '';
+    const mb = bytes / (1024 * 1024);
+    return mb >= 1024 ? `${(mb / 1024).toFixed(2)} GB` : `${mb.toFixed(0)} MB`;
+  };
 
   return (
     <ScreenContainer>
@@ -149,10 +166,23 @@ const AdminContentScreen = () => {
               {mode === 'link' ? (
                 <TextInput value={url} onChangeText={setUrl} placeholder="YouTube URL or video id" placeholderTextColor={colors.textMuted} autoCapitalize="none" style={styles.input} />
               ) : (
-                <TouchableOpacity onPress={pickFile} activeOpacity={0.85} style={styles.dropZone}>
+                <TouchableOpacity onPress={pickFile} activeOpacity={0.85} style={styles.dropZone} disabled={uploading}>
                   <Icon name={picked ? 'checkmark-circle' : 'cloud-upload-outline'} size={26} color={picked ? colors.success : colors.primary} />
                   <AppText variant="small" bold style={{ marginTop: 6 }} numberOfLines={1}>{picked ? picked.name : 'Tap to choose a video'}</AppText>
+                  {picked?.size ? <AppText variant="tiny" color={colors.textSecondary} style={{ marginTop: 2 }}>{fmtSize(picked.size)}</AppText> : null}
                 </TouchableOpacity>
+              )}
+
+              {/* Upload progress — large movies take a while; this shows it's alive */}
+              {mode === 'file' && uploading && (
+                <View style={styles.progressWrap}>
+                  <View style={styles.progressTrack}>
+                    <View style={[styles.progressFill, { width: `${uploadPct}%` }]} />
+                  </View>
+                  <AppText variant="tiny" color={colors.textSecondary} style={{ marginTop: 4 }}>
+                    {uploadPct < 100 ? `Uploading… ${uploadPct}%` : 'Finalizing…'}
+                  </AppText>
+                </View>
               )}
 
               <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: spacing.sm }}>
@@ -178,7 +208,10 @@ const AdminContentScreen = () => {
                 </TouchableOpacity>
               )}
 
-              <AppButton title={busy ? 'Working…' : mode === 'file' ? 'Upload Video' : '+ Add Content'} size="md" fullWidth disabled={busy} onPress={onSubmit} />
+              <AppButton
+                title={uploading ? `Uploading… ${uploadPct}%` : addLink.isPending ? 'Working…' : mode === 'file' ? 'Upload Video' : '+ Add Content'}
+                size="md" fullWidth disabled={busy} onPress={onSubmit}
+              />
             </View>
 
             {/* SEARCH */}
@@ -237,6 +270,9 @@ const styles = StyleSheet.create({
   modeBtnOn: { borderColor: colors.primary, backgroundColor: 'rgba(238,48,99,0.15)' },
   input: { backgroundColor: 'rgba(255,255,255,0.05)', borderWidth: 1, borderColor: colors.border, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, color: colors.white, fontFamily: 'Outfit-Regular', fontSize: 14, marginBottom: spacing.sm },
   dropZone: { alignItems: 'center', justifyContent: 'center', paddingVertical: spacing.lg, marginBottom: spacing.sm, borderRadius: 12, borderWidth: 1.5, borderColor: colors.border2, borderStyle: 'dashed', backgroundColor: 'rgba(255,255,255,0.04)' },
+  progressWrap: { marginBottom: spacing.sm },
+  progressTrack: { height: 6, borderRadius: 3, backgroundColor: 'rgba(255,255,255,0.1)', overflow: 'hidden' },
+  progressFill: { height: '100%', backgroundColor: colors.primary, borderRadius: 3 },
   pill: { paddingHorizontal: 14, paddingVertical: 7, borderRadius: 999, marginRight: 8, overflow: 'hidden', backgroundColor: 'rgba(255,255,255,0.06)', borderWidth: 1, borderColor: colors.border },
   pillOn: { borderColor: 'transparent' },
   checkRow: { flexDirection: 'row', alignItems: 'center', marginBottom: spacing.sm },

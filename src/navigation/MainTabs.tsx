@@ -8,7 +8,7 @@ import Icon from 'react-native-vector-icons/Ionicons';
 import { useQuery } from '@tanstack/react-query';
 import AppText from '@/components/AppText';
 import colors from '@/constants/colors';
-import { notificationsApi } from '@/lib/api';
+import { notificationsApi, chatsApi } from '@/lib/api';
 
 import HomeScreen from '@/screens/HomeScreen';
 import NewsHotScreen from '@/screens/NewsHotScreen';
@@ -57,13 +57,24 @@ const CustomTabBar: React.FC<BottomTabBarProps> = ({ state, descriptors, navigat
   const insets = useSafeAreaInsets();
   const bottom = Math.max(insets.bottom, 12);
 
-  // unread notifications badge
+  // unread notifications badge (Alerts tab)
   const notifQuery = useQuery({
     queryKey: ['notifications', 'list'],
     queryFn: () => notificationsApi.list({ limit: 1 }),
     refetchInterval: 30000, // poll every 30s for new alerts
   });
   const unread = notifQuery.data?.unreadCount || 0;
+
+  // unread chat messages badge (Chat tab) — messages show here, NOT in Alerts.
+  const chatsQuery = useQuery({
+    queryKey: ['chats', 'list'],
+    queryFn: () => chatsApi.list(),
+    refetchInterval: 30000,
+  });
+  const chatUnread = (chatsQuery.data?.chats || []).reduce(
+    (sum, c) => sum + (c.unreadCount || 0),
+    0,
+  );
 
   return (
     <View style={[styles.barWrap, { paddingBottom: bottom }]} pointerEvents="box-none">
@@ -92,7 +103,12 @@ const CustomTabBar: React.FC<BottomTabBarProps> = ({ state, descriptors, navigat
             };
 
             const tint = isFocused ? colors.primary : 'rgba(255,255,255,0.5)';
-            const showBadge = tabSpec.name === 'Alerts' && unread > 0;
+            // Chat tab -> unread messages. Alerts tab -> unread notifications.
+            const badgeCount =
+              tabSpec.name === 'Chat' ? chatUnread
+              : tabSpec.name === 'Alerts' ? unread
+              : 0;
+            const showBadge = badgeCount > 0;
 
             return (
               <TouchableOpacity
@@ -114,7 +130,7 @@ const CustomTabBar: React.FC<BottomTabBarProps> = ({ state, descriptors, navigat
                   {showBadge && (
                     <View style={styles.badge}>
                       <AppText variant="tiny" bold color={colors.white} style={{ fontSize: 9 }}>
-                        {unread > 9 ? '9+' : unread}
+                        {badgeCount > 9 ? '9+' : badgeCount}
                       </AppText>
                     </View>
                   )}

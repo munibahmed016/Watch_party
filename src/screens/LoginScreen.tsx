@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import {
-  View, StyleSheet, TouchableOpacity, KeyboardAvoidingView, Platform, ScrollView,
+  View, StyleSheet, TouchableOpacity, KeyboardAvoidingView, Platform, ScrollView, Alert,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import ScreenContainer from '@/components/ScreenContainer';
@@ -11,7 +11,7 @@ import AppButton from '@/components/AppButton';
 import GradientText from '@/components/GradientText';
 import spacing from '@/constants/spacing';
 import colors from '@/constants/colors';
-import { authApi } from '@/lib/api';
+import { authApi, ApiError } from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
 import { showApiError } from '@/hooks/useApiErrorAlert';
 
@@ -35,7 +35,17 @@ const LoginScreen = () => {
       await setSession(user, accessToken, refreshToken);
       navigation.reset({ index: 0, routes: [{ name: 'MainTabs' }] });
     } catch (err) {
-      showApiError(err, 'Unable to sign in. Please try again.');
+      // A banned account gets its own clear, dedicated popup — matched by the
+      // backend's distinct error code (not by parsing the message text, so
+      // this keeps working even if the wording changes later).
+      if (err instanceof ApiError && err.code === 'ACCOUNT_BANNED') {
+        Alert.alert(
+          'Account Banned',
+          'Your account has been banned. Please contact support to resolve this issue.'
+        );
+      } else {
+        showApiError(err, 'Unable to sign in. Please try again.');
+      }
     } finally {
       setLoading(false);
     }

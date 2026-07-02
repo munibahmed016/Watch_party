@@ -32,6 +32,17 @@ const NavCard: React.FC<{ icon: string; title: string; subtitle: string; onPress
   </TouchableOpacity>
 );
 
+// Wraps a StatCard so every top-metric tile routes somewhere relevant, without
+// touching StatCard's own internals (it doesn't accept an onPress prop).
+const ClickableStat: React.FC<{ onPress?: () => void; style?: any; children: React.ReactNode }> = ({ onPress, style, children }) =>
+  onPress ? (
+    <TouchableOpacity onPress={onPress} activeOpacity={0.8} style={style}>
+      {children}
+    </TouchableOpacity>
+  ) : (
+    <View style={style}>{children}</View>
+  );
+
 const AdminDashboardScreen = () => {
   const navigation = useNavigation<any>();
   const statsQ = useQuery({ queryKey: ['admin', 'stats'], queryFn: () => adminApi.stats() });
@@ -51,7 +62,7 @@ const AdminDashboardScreen = () => {
     <ScreenContainer>
       <BrandHeader showBack onBack={() => navigation.goBack()}
         infoTitle="Admin dashboard"
-        infoIntro="Live analytics and full control of your platform."
+        infoIntro="Live analytics and full control of your platform. Tap any card to jump straight to it."
         infoPoints={[
           { icon: 'stats-chart', title: 'Analytics', text: 'Track signups, rooms and subscriptions over time.' },
           { icon: 'film', title: 'Content & creators', text: 'Approve creators, review uploads, manage the library.' },
@@ -65,36 +76,58 @@ const AdminDashboardScreen = () => {
 
         {loading ? <ActivityIndicator color={colors.primary} style={{ marginTop: 40 }} /> : (
           <>
-            {/* Top stat cards */}
+            {/* Top stat cards — every tile is now tappable and routes to the
+                screen that manages that number. */}
             <View style={styles.statRow}>
-              <StatCard value={s?.users ?? 0} label="Total Users" accent />
-              <StatCard value={s?.subscribedUsers ?? 0} label="Subscribed" />
-              <StatCard value={s?.content ?? 0} label="Content" />
+              <ClickableStat style={{ flex: 1 }} onPress={() => navigation.navigate('AdminUsers')}>
+                <StatCard value={s?.users ?? 0} label="Total Users" accent />
+              </ClickableStat>
+              <ClickableStat style={{ flex: 1 }} onPress={() => navigation.navigate('AdminSubscriptions')}>
+                <StatCard value={s?.subscribedUsers ?? 0} label="Subscribed" />
+              </ClickableStat>
+              <ClickableStat style={{ flex: 1 }} onPress={() => navigation.navigate('AdminContent')}>
+                <StatCard value={s?.content ?? 0} label="Content" />
+              </ClickableStat>
             </View>
             <View style={[styles.statRow, { marginTop: spacing.sm }]}>
-              <StatCard value={s?.rooms ?? 0} label="Rooms" />
-              <StatCard value={s?.verifiedUsers ?? 0} label="Verified" />
-              <StatCard value={s?.bannedUsers ?? 0} label="Banned" />
+              <ClickableStat style={{ flex: 1 }} onPress={() => navigation.navigate('AdminRooms')}>
+                <StatCard value={s?.rooms ?? 0} label="Rooms" />
+              </ClickableStat>
+              <ClickableStat style={{ flex: 1 }} onPress={() => navigation.navigate('AdminUsers', { filter: 'verified' })}>
+                <StatCard value={s?.verifiedUsers ?? 0} label="Verified" />
+              </ClickableStat>
+              <ClickableStat style={{ flex: 1 }} onPress={() => navigation.navigate('AdminUsers', { filter: 'banned' })}>
+                <StatCard value={s?.bannedUsers ?? 0} label="Banned" />
+              </ClickableStat>
             </View>
 
-            {/* Signups chart */}
-            <View style={styles.card}>
-              <AppText bold style={{ marginBottom: spacing.sm }}>Signups (last 14 days)</AppText>
-              <BarChart data={series.map((d: any) => ({ label: d.date.slice(5), value: d.signups }))} />
-            </View>
-
-            {/* Rooms chart */}
-            <View style={styles.card}>
-              <AppText bold style={{ marginBottom: spacing.sm }}>Rooms created (last 14 days)</AppText>
-              <BarChart data={series.map((d: any) => ({ label: d.date.slice(5), value: d.rooms }))} />
-            </View>
-
-            {/* Subscription distribution */}
-            {subDist.length > 0 && (
-              <View style={styles.card}>
-                <AppText bold style={{ marginBottom: spacing.md }}>Users by Plan</AppText>
-                <Distribution data={subDist.map((d: any) => ({ label: d.plan, value: d.count }))} />
+            {/* Signups chart -> Users screen */}
+            <TouchableOpacity activeOpacity={0.85} onPress={() => navigation.navigate('AdminUsers')} style={styles.card}>
+              <View style={styles.cardHeaderRow}>
+                <AppText bold>Signups (last 14 days)</AppText>
+                <Icon name="chevron-forward" size={16} color={colors.textSecondary} />
               </View>
+              <BarChart data={series.map((d: any) => ({ label: d.date.slice(5), value: d.signups }))} />
+            </TouchableOpacity>
+
+            {/* Rooms chart -> Rooms screen */}
+            <TouchableOpacity activeOpacity={0.85} onPress={() => navigation.navigate('AdminRooms')} style={styles.card}>
+              <View style={styles.cardHeaderRow}>
+                <AppText bold>Rooms created (last 14 days)</AppText>
+                <Icon name="chevron-forward" size={16} color={colors.textSecondary} />
+              </View>
+              <BarChart data={series.map((d: any) => ({ label: d.date.slice(5), value: d.rooms }))} />
+            </TouchableOpacity>
+
+            {/* Subscription distribution -> Subscriptions screen */}
+            {subDist.length > 0 && (
+              <TouchableOpacity activeOpacity={0.85} onPress={() => navigation.navigate('AdminSubscriptions')} style={styles.card}>
+                <View style={styles.cardHeaderRow}>
+                  <AppText bold>Users by Plan</AppText>
+                  <Icon name="chevron-forward" size={16} color={colors.textSecondary} />
+                </View>
+                <Distribution data={subDist.map((d: any) => ({ label: d.plan, value: d.count }))} />
+              </TouchableOpacity>
             )}
 
             {/* Navigation — full control */}
@@ -103,6 +136,7 @@ const AdminDashboardScreen = () => {
             <NavCard icon="shield-checkmark" title="Content Review" subtitle="Approve or reject creator uploads" badge={pendingContent} onPress={() => navigation.navigate('AdminReview')} />
             <NavCard icon="film" title="Content Library" subtitle="Add, feature & delete content" onPress={() => navigation.navigate('AdminContent')} />
             <NavCard icon="people" title="Users" subtitle="Verify, ban, roles & delete" onPress={() => navigation.navigate('AdminUsers')} />
+            <NavCard icon="tv" title="Rooms" subtitle="View, end or delete watch parties" onPress={() => navigation.navigate('AdminRooms')} />
             <NavCard icon="card" title="Subscriptions" subtitle="Plans & user subscriptions" onPress={() => navigation.navigate('AdminSubscriptions')} />
           </>
         )}
@@ -115,6 +149,7 @@ const styles = StyleSheet.create({
   title: { lineHeight: 40, paddingBottom: 4, marginBottom: spacing.md },
   statRow: { flexDirection: 'row', gap: spacing.sm },
   card: { backgroundColor: 'rgba(255,255,255,0.04)', borderWidth: 1, borderColor: colors.border, borderRadius: layout.radius.lg, padding: spacing.md, marginTop: spacing.lg },
+  cardHeaderRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: spacing.sm },
   navCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.04)', borderWidth: 1, borderColor: colors.border, borderRadius: layout.radius.lg, padding: spacing.md, marginBottom: spacing.sm },
   navIcon: { width: 44, height: 44, borderRadius: 12, overflow: 'hidden', alignItems: 'center', justifyContent: 'center', marginRight: spacing.md },
   badge: { minWidth: 22, height: 22, borderRadius: 11, backgroundColor: '#FF8A3D', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 6, marginRight: 8 },

@@ -6,14 +6,18 @@ import AdminUsersScreen from '@/screens/admin/AdminUsersScreen';
 import AdminSubscriptionsScreen from '@/screens/admin/AdminSubscriptionsScreen';
 import AdminCreatorsScreen from '@/screens/admin/AdminCreatorsScreen';
 import AdminReviewScreen from '@/screens/admin/AdminReviewScreen';
+import AdminRoomsScreen from '@/screens/admin/AdminRoomsScreen';
 
 export type AdminStackParamList = {
   AdminDashboard: undefined;
   AdminContent: undefined;
-  AdminUsers: undefined;
+  // Optional filter so the Dashboard's Verified / Banned tiles can land here
+  // pre-filtered instead of showing everyone.
+  AdminUsers: { filter?: 'all' | 'verified' | 'banned' | 'admin' } | undefined;
   AdminSubscriptions: undefined;
   AdminCreators: undefined;
   AdminReview: undefined;
+  AdminRooms: undefined;
 };
 
 const Stack = createNativeStackNavigator<AdminStackParamList>();
@@ -26,6 +30,7 @@ const AdminNavigator: React.FC = () => (
     <Stack.Screen name="AdminSubscriptions" component={AdminSubscriptionsScreen} />
     <Stack.Screen name="AdminCreators" component={AdminCreatorsScreen} />
     <Stack.Screen name="AdminReview" component={AdminReviewScreen} />
+    <Stack.Screen name="AdminRooms" component={AdminRoomsScreen} />
   </Stack.Navigator>
 );
 

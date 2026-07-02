@@ -1,13 +1,12 @@
-// src/hooks/useChat.ts
-// Real-time chat hook. Loads initial history via REST, then subscribes
-// to chat:* socket events for live messages, typing, and read receipts.
-
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { chatsApi, Message } from '@/lib/api';
 import { getSocket, peekSocket } from '@/lib/socket';
 import { useAuth } from '@/contexts/AuthContext';
 
 type TypingUser = { userId: string; username: string };
+// Media that a USER can attach when sending (SYSTEM is server-only, so excluded).
+type SendType = 'TEXT' | 'IMAGE' | 'VIDEO' | 'AUDIO';
+type SendMedia = { type?: SendType; mediaUrl?: string };
 
 export const useChat = (chatId: string | null) => {
   const { user } = useAuth();
@@ -43,6 +42,8 @@ export const useChat = (chatId: string | null) => {
   useEffect(() => {
     if (!chatId) return;
     let mounted = true;
+    // Capture the ref for cleanup (its .current may change before cleanup runs).
+    const timers = typingTimers.current;
 
     const handleMessage = (data: { chatId: string; message: Message }) => {
       if (!mounted || data.chatId !== chatId) return;
@@ -97,15 +98,21 @@ export const useChat = (chatId: string | null) => {
     return () => {
       mounted = false;
       cleanupFns.forEach((fn) => fn());
-      typingTimers.current.forEach((t) => clearTimeout(t));
-      typingTimers.current.clear();
+      timers.forEach((t) => clearTimeout(t));
+      timers.clear();
     };
   }, [chatId, user?.id]);
 
-  // Send a message via socket (with REST fallback)
+  // Send a message. Text goes via socket (live) with a REST fallback.
+  // A media message (GIF / image — has a mediaUrl) is sent via REST so the
+  // mediaUrl + type are saved reliably (chatsApi.send supports them).
   const send = useCallback(
-    async (content: string) => {
-      if (!chatId || !content.trim()) return;
+    async (content: string, media?: SendMedia) => {
+      const text = (content || '').trim();
+      const mediaUrl = media?.mediaUrl;
+      if (!chatId) return;
+      if (!text && !mediaUrl) return;
+      const type: SendType = media?.type || 'TEXT';
       const clientId = `c_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
 
       // Optimistic local insert
@@ -120,9 +127,9 @@ export const useChat = (chatId: string | null) => {
           fullName: user?.fullName || null,
           avatarUrl: user?.avatarUrl || null,
         },
-        content,
-        type: 'TEXT',
-        mediaUrl: null,
+        content: text,
+        type,
+        mediaUrl: mediaUrl || null,
         replyToId: null,
         isEdited: false,
         isDeleted: false,
@@ -131,10 +138,11 @@ export const useChat = (chatId: string | null) => {
       setMessages((prev) => [...prev, optimistic]);
 
       const socket = peekSocket();
-      if (socket) {
+      // Media -> REST (reliable mediaUrl save). Plain text -> socket (live).
+      if (!mediaUrl && socket) {
         socket.emit(
           'chat:send',
-          { chatId, content, clientId },
+          { chatId, content: text, clientId },
           (ack: { ok: boolean; messageId?: string; error?: string }) => {
             if (ack.ok && ack.messageId) {
               setMessages((prev) =>
@@ -147,9 +155,9 @@ export const useChat = (chatId: string | null) => {
           }
         );
       } else {
-        // REST fallback
+        // REST (media, or text when socket is unavailable)
         try {
-          const { message } = await chatsApi.send(chatId, { content });
+          const { message } = await chatsApi.send(chatId, { content: text, type, mediaUrl });
           setMessages((prev) => prev.map((m) => (m.id === clientId ? message : m)));
         } catch {
           setMessages((prev) => prev.filter((m) => m.id !== clientId));

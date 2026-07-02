@@ -285,7 +285,8 @@ export type Notification = {
   id: string;
   type:
     | 'FRIEND_REQUEST' | 'FRIEND_ACCEPTED' | 'ROOM_INVITE' | 'NEW_MESSAGE'
-    | 'FOLLOW' | 'SUBSCRIBE' | 'CONTENT_LIKE' | 'COMMENT' | 'LIVE' | 'SYSTEM';
+    | 'FOLLOW' | 'SUBSCRIBE' | 'CONTENT_LIKE' | 'COMMENT' | 'LIVE' | 'SYSTEM'
+    | 'PARTY_STARTED' | 'PARTY_REMINDER' | 'PLAYBACK' | 'MENTION';
   title: string;
   body: string;
   data: Record<string, unknown> | null;
@@ -378,6 +379,9 @@ export type AdminUser = {
   isAdmin: boolean;
   isBanned: boolean;
   planId: string | null;
+  // The REAL entitlement field (BASIC/PRO/ADVANCE) — use this to show a
+  // user's actual plan; `plan` (below) is the legacy/unused table relation.
+  planTier: 'BASIC' | 'PRO' | 'ADVANCE';
   subscriptionExpiresAt: string | null;
   plan?: { name: string } | null;
   createdAt: string;
@@ -396,6 +400,33 @@ export type AdminPlan = {
   features: string[];
   isActive: boolean;
   subscriberCount: number;
+};
+
+// The REAL subscription tiers (BASIC/PRO/ADVANCE) — what the app actually
+// uses for entitlements. `tier` is stable; everything else is admin-editable.
+export type AdminPlanTier = {
+  tier: 'BASIC' | 'PRO' | 'ADVANCE';
+  name: string;
+  price: number;
+  durationDays: number;
+  color: string;
+  colorName: string;
+  gradient: string[];
+  features: string[];
+  isActive: boolean;
+};
+
+export type AdminRoom = {
+  id: string;
+  code: string;
+  name: string;
+  isPrivate: boolean;
+  status: 'ACTIVE' | 'PAUSED' | 'ENDED';
+  videoTitle: string | null;
+  isPlaying: boolean;
+  createdAt: string;
+  owner: { id: string; username: string; fullName: string | null };
+  memberCount: number;
 };
 
 // =====================================================================
@@ -581,6 +612,12 @@ export const chatsApi = {
 
   send: (id: string, input: { content: string; type?: 'TEXT' | 'IMAGE' | 'VIDEO' | 'AUDIO'; mediaUrl?: string; replyToId?: string }) =>
     request<{ message: Message }>(`/chats/${id}/messages`, { method: 'POST', body: input }),
+
+  uploadMedia: async (uri: string, mimeType = 'image/jpeg'): Promise<{ url: string; type: 'IMAGE' }> => {
+    const fd = new FormData();
+    fd.append('file', { uri, name: 'photo.jpg', type: mimeType } as unknown as Blob);
+    return request<{ url: string; type: 'IMAGE' }>('/chats/media', { method: 'POST', body: fd });
+  },
 
   markRead: (id: string) =>
     request<null>(`/chats/${id}/read`, { method: 'POST' }),
@@ -811,18 +848,34 @@ export const adminApi = {
   deleteContent: (id: string) =>
     request<{ deleted: boolean }>(`/admin/content/${id}`, { method: 'DELETE' }),
 
-  // Plans
+  // Plans (LEGACY — kept working, no longer used by the Subscriptions screen)
   listPlans: () => request<{ plans: AdminPlan[] }>('/admin/plans'),
   createPlan: (body: { name: string; price?: number; durationDays?: number; features?: string[]; isActive?: boolean }) =>
     request<{ plan: AdminPlan }>('/admin/plans', { method: 'POST', body }),
   deletePlan: (id: string) =>
     request<{ deleted: boolean }>(`/admin/plans/${id}`, { method: 'DELETE' }),
 
-  // Subscriptions (manual)
+  // Subscriptions (LEGACY manual assignment against the unused Plan table)
   assignSubscription: (userId: string, planId: string) =>
     request<{ user: AdminUser }>('/admin/subscriptions/assign', { method: 'POST', body: { userId, planId } }),
   removeSubscription: (userId: string) =>
     request<{ user: AdminUser }>('/admin/subscriptions/remove', { method: 'POST', body: { userId } }),
+
+  // REAL subscription tiers (BASIC/PRO/ADVANCE) — the system actually used
+  // for entitlements app-wide. Use these, not the legacy plan methods above.
+  listSubscriptionTiers: () => request<{ plans: AdminPlanTier[] }>('/admin/subscription-tiers'),
+  updateSubscriptionTier: (tier: string, body: Partial<{ price: number; durationDays: number; features: string[]; isActive: boolean }>) =>
+    request<{ plans: AdminPlanTier[] }>(`/admin/subscription-tiers/${tier}`, { method: 'PATCH', body }),
+  assignUserTier: (userId: string, tier: string, days?: number) =>
+    request<{ tier: string }>('/admin/subscription-tiers/assign', { method: 'POST', body: { userId, tier, days } }),
+
+  // Rooms — dedicated admin list/manage, separate from Users.
+  listRooms: (search = '', page = 1, limit = 100) =>
+    request<{ rooms: AdminRoom[]; total: number; page: number; totalPages: number }>(
+      `/admin/rooms?page=${page}&limit=${limit}${search ? `&search=${encodeURIComponent(search)}` : ''}`
+    ),
+  endRoom: (id: string) => request<{ room: AdminRoom }>(`/admin/rooms/${id}/end`, { method: 'POST' }),
+  deleteRoom: (id: string) => request<{ deleted: boolean }>(`/admin/rooms/${id}`, { method: 'DELETE' }),
 };
 
 // =====================================================================

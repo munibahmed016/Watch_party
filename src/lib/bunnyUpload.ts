@@ -1,6 +1,15 @@
+// src/lib/bunnyUpload.ts
+//
+// Uploads a local video file straight to Bunny Stream using the presigned
+// TUS auth returned by the backend. Uses XMLHttpRequest (NOT fetch+blob),
+// because React Native's fetch() cannot reliably turn a local file:// URI
+// into a Blob — that was causing "Network request failed".
+//
+// XHR can send a { uri, type, name } file object directly, which RN's
+// networking layer streams from disk. This is the reliable RN approach.
 
 type UploadAuth = {
-  endpoint: string;
+  endpoint: string;            // https://video.bunnycdn.com/tusupload
   libraryId: string;
   videoId: string;
   authorizationSignature: string;
@@ -8,12 +17,17 @@ type UploadAuth = {
 };
 
 // Small helper: a single XHR request returning a Promise.
+// `timeoutMs` is optional — pass 0/undefined to disable the timeout entirely,
+// which matters for the actual file upload (large movies can legitimately
+// take many minutes on a mobile connection; a fixed 2-minute timeout there
+// was aborting every upload above a couple hundred MB).
 function xhr(
   method: string,
   url: string,
   headers: Record<string, string>,
   body: any = null,
   onProgress?: (pct: number) => void,
+  timeoutMs = 0,
 ): Promise<{ status: number; getHeader: (h: string) => string | null }> {
   return new Promise((resolve, reject) => {
     const req = new XMLHttpRequest();
@@ -28,8 +42,8 @@ function xhr(
 
     req.onload = () => resolve({ status: req.status, getHeader: (h) => req.getResponseHeader(h) });
     req.onerror = () => reject(new Error('Network request failed during upload.'));
-    req.ontimeout = () => reject(new Error('Upload timed out.'));
-    req.timeout = 120000; // 2 min
+    req.ontimeout = () => reject(new Error('Upload timed out. Please check your connection and try again.'));
+    if (timeoutMs > 0) req.timeout = timeoutMs;
 
     req.send(body);
   });
@@ -41,6 +55,7 @@ export async function uploadToBunny(
   fileType: string,
   auth: UploadAuth,
   onProgress?: (pct: number) => void,
+  fileSize?: number,
 ): Promise<void> {
   // TUS metadata (base64-encoded values)
   const meta = `filetype ${b64(fileType)},title ${b64(fileName)}`;
@@ -53,14 +68,24 @@ export async function uploadToBunny(
   };
 
   // 1) TUS "create" — announce the upload, get the upload URL.
-  //    We don't know the exact byte length up front in RN, so we let Bunny
-  //    accept the file in a single PATCH (creation-with-upload style).
-  const createRes = await xhr('POST', auth.endpoint, {
+  //    IMPORTANT: Upload-Length must be the file's REAL byte size. Sending a
+  //    placeholder (e.g. "1") made Bunny allocate a 1-byte slot — small test
+  //    files happened to look fine, but any real movie either got rejected or
+  //    silently truncated after the first byte. When the picker doesn't give
+  //    us a size, fall back to the TUS "deferred length" extension instead of
+  //    lying about the length.
+  const createHeaders: Record<string, string> = {
     ...baseHeaders,
     'Tus-Resumable': '1.0.0',
-    'Upload-Length': '1', // placeholder; Bunny accepts the stream below
     'Upload-Metadata': meta,
-  });
+  };
+  if (fileSize && fileSize > 0) {
+    createHeaders['Upload-Length'] = String(fileSize);
+  } else {
+    createHeaders['Upload-Defer-Length'] = '1';
+  }
+
+  const createRes = await xhr('POST', auth.endpoint, createHeaders, null, undefined, 120000);
 
   if (createRes.status !== 201 && createRes.status !== 200) {
     throw new Error(`Could not start upload (code ${createRes.status}).`);
@@ -68,20 +93,22 @@ export async function uploadToBunny(
   const location = createRes.getHeader('Location') || auth.endpoint;
 
   // 2) Send the actual file. RN streams it from disk via the { uri } object.
+  //    No fixed timeout here — large movies over a slow mobile connection can
+  //    legitimately take a long time; the upload should only fail on an actual
+  //    network error, not an arbitrary clock.
   const fileObj: any = { uri: fileUri, type: fileType, name: fileName };
 
-  const patchRes = await xhr(
-    'PATCH',
-    location,
-    {
-      ...baseHeaders,
-      'Tus-Resumable': '1.0.0',
-      'Upload-Offset': '0',
-      'Content-Type': 'application/offset+octet-stream',
-    },
-    fileObj,
-    onProgress,
-  );
+  const patchHeaders: Record<string, string> = {
+    ...baseHeaders,
+    'Tus-Resumable': '1.0.0',
+    'Upload-Offset': '0',
+    'Content-Type': 'application/offset+octet-stream',
+  };
+  if (fileSize && fileSize > 0) {
+    patchHeaders['Upload-Length'] = String(fileSize);
+  }
+
+  const patchRes = await xhr('PATCH', location, patchHeaders, fileObj, onProgress, 0);
 
   if (patchRes.status !== 204 && patchRes.status !== 200) {
     throw new Error(`Upload failed (code ${patchRes.status}).`);

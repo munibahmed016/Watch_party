@@ -27,6 +27,8 @@ export const useRoom = (roomId: string | null) => {
   const [chatMessages, setChatMessages] = useState<RoomChatMessage[]>([]);
   const [reactions, setReactions] = useState<RoomReaction[]>([]);
   const [loading, setLoading] = useState(true);
+  // Set true when the host ends the party (server broadcasts `room:ended`).
+  const [roomEnded, setRoomEnded] = useState(false);
   const localPositionRef = useRef(0);
 
   // ---- Initial fetch (REST: real videoUrl comes from here) ----
@@ -111,12 +113,27 @@ export const useRoom = (roomId: string | null) => {
       setReactions((p) => [...p, r]);
       setTimeout(() => setReactions((p) => p.filter((x) => x !== r)), 2000);
     };
+    // Host ended the party -> everyone leaves.
+    const handleEnded = (d: any) => { if (d.roomId && d.roomId !== roomId) return; setRoomEnded(true); };
 
     (async () => {
       try {
         const socket = await getSocket();
         if (!mounted) return;
+
+        // Re-join the room whenever the socket (re)connects. Socket.IO rooms are
+        // PER-CONNECTION: after any reconnect (network blip, app backgrounded,
+        // server restart) the socket silently drops out of the room namespace,
+        // so it stops receiving room:message / room:play / room:seek / room:ended
+        // even though the user is still a DB member. That is exactly the bug
+        // where a user's OWN messages still send (member check passes) but
+        // incoming messages, live sync and "host ended" stop arriving. Emitting
+        // room:join on every connect puts the socket back into the namespace and
+        // re-seeds state + chat history via room:joined.
+        const handleConnect = () => { socket.emit('room:join', { roomId }); };
+
         socket.emit('room:join', { roomId });
+        socket.on('connect', handleConnect);
         socket.on('room:joined', handleJoined);
         socket.on('room:state', handleState);
         socket.on('room:play', handlePlay);
@@ -127,6 +144,10 @@ export const useRoom = (roomId: string | null) => {
         socket.on('room:userLeft', handleUserLeft);
         socket.on('room:message', handleMessage);
         socket.on('room:reaction', handleReaction);
+        socket.on('room:ended', handleEnded);
+        socket.on('room:closed', handleEnded);
+        socket.on('room:deleted', handleEnded);
+        cleanupFns.push(() => socket.off('connect', handleConnect));
         cleanupFns.push(() => socket.off('room:joined', handleJoined));
         cleanupFns.push(() => socket.off('room:state', handleState));
         cleanupFns.push(() => socket.off('room:play', handlePlay));
@@ -137,6 +158,9 @@ export const useRoom = (roomId: string | null) => {
         cleanupFns.push(() => socket.off('room:userLeft', handleUserLeft));
         cleanupFns.push(() => socket.off('room:message', handleMessage));
         cleanupFns.push(() => socket.off('room:reaction', handleReaction));
+        cleanupFns.push(() => socket.off('room:ended', handleEnded));
+        cleanupFns.push(() => socket.off('room:closed', handleEnded));
+        cleanupFns.push(() => socket.off('room:deleted', handleEnded));
         cleanupFns.push(() => socket.emit('room:leave', { roomId }));
       } catch {}
     })();
@@ -167,6 +191,8 @@ export const useRoom = (roomId: string | null) => {
   const changeVideo = useCallback((url: string) => { if (!roomId) return; peekSocket()?.emit('room:videoChange', { roomId, url }); }, [roomId]);
   const sendChat = useCallback((content: string) => { if (!roomId || !content.trim()) return; peekSocket()?.emit('room:message', { roomId, content }); }, [roomId]);
   const sendReaction = useCallback((emoji: string) => { if (!roomId) return; peekSocket()?.emit('room:reaction', { roomId, emoji }); }, [roomId]);
+  // Host ends the watch party for everyone.
+  const endRoom = useCallback(() => { if (!roomId) return; peekSocket()?.emit('room:end', { roomId }); }, [roomId]);
 
-  return { room, videoState, presentUsers, chatMessages, reactions, loading, isModerator, computeExpectedPosition, shouldCorrect, play, pause, seek, changeVideo, sendChat, sendReaction };
+  return { room, videoState, presentUsers, chatMessages, reactions, loading, roomEnded, isModerator, computeExpectedPosition, shouldCorrect, play, pause, seek, changeVideo, sendChat, sendReaction, endRoom };
 };

@@ -36,6 +36,11 @@ const CreateRoomScreen = () => {
   const route = useRoute<any>();
   const content: PickedContent | undefined = route.params?.content;
 
+  // We already have a video (from WatchParty Movies or a picker) when there is
+  // either a videoId (YouTube) OR a direct videoUrl (admin hosted/Bunny movie).
+  const hasContent = !!(content?.videoId || content?.videoUrl);
+  const hasPoster = !!(content?.videoId || content?.thumbnailUrl);
+
   const [name, setName] = useState(content?.title ? clampName(content.title) : '');
   const [isPrivate, setIsPrivate] = useState(false);
   const [password, setPassword] = useState('');
@@ -91,12 +96,12 @@ const CreateRoomScreen = () => {
 
           <GradientText variant="h1" center style={styles.title}>Create Room</GradientText>
           <AppText variant="small" color={colors.textSecondary} center style={styles.sub}>
-            {content?.title ? 'Name your room and start watching.' : 'Name your room, then pick where to watch.'}
+            {hasContent ? 'Name your room and start watching.' : 'Name your room, then pick where to watch.'}
           </AppText>
 
-          {content?.videoId ? (
+          {hasPoster ? (
             <View style={styles.posterWrap}>
-              <Image source={{ uri: content.thumbnailUrl || `https://img.youtube.com/vi/${content.videoId}/hqdefault.jpg` }} style={styles.poster} />
+              <Image source={{ uri: content?.thumbnailUrl || (content?.videoId ? `https://img.youtube.com/vi/${content.videoId}/hqdefault.jpg` : undefined) }} style={styles.poster} />
               <View style={styles.posterOverlay}><View style={styles.posterPlayCircle}><Icon name="play" size={26} color="#fff" /></View></View>
             </View>
           ) : (
@@ -121,7 +126,7 @@ const CreateRoomScreen = () => {
 
             {isPrivate && <AppInput value={password} onChangeText={setPassword} placeholder="Room password" containerStyle={{ marginBottom: spacing.md }} />}
 
-            {content?.videoId ? (
+            {hasContent ? (
               <TouchableOpacity onPress={startWithContent} disabled={createMutation.isPending} activeOpacity={0.85} style={{ marginTop: spacing.md }}>
                 <LinearGradient colors={colors.buttonGradient as unknown as string[]} start={colors.gradientStartPoint} end={colors.gradientEndPoint} style={styles.startBtn}>
                   {createMutation.isPending ? <ActivityIndicator color="#fff" /> : (<><Icon name="play" size={18} color="#fff" /><AppText bold color="#fff" style={{ marginLeft: 8 }}>Start Watching</AppText></>)}

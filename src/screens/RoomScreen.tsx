@@ -2,7 +2,7 @@
 import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import {
   View, StyleSheet, TouchableOpacity, ActivityIndicator, FlatList,
-  TextInput, KeyboardAvoidingView, Platform, StatusBar, Animated, Dimensions, Image,
+  TextInput, KeyboardAvoidingView, Platform, StatusBar, Animated, Dimensions, Image, Alert,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/Ionicons';
 import { WebView, WebViewNavigation } from 'react-native-webview';
@@ -12,6 +12,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import LinearGradient from 'react-native-linear-gradient';
 import AppText from '@/components/AppText';
 import ShareModal from '@/components/ShareModal';
+import EmojiPicker from '@/components/EmojiPicker';
 import colors from '@/constants/colors';
 import spacing from '@/constants/spacing';
 import { useRoom } from '@/hooks/useRoom';
@@ -29,6 +30,18 @@ const REACTIONS = ['❤️', '😂', '😮', '👏', '🔥', '🥺'];
 // Error 152 in a WebView). baseUrl must match this origin.
 const ORIGIN = 'https://watchpartylive.com';
 
+// Bunny Stream pull-zone (CDN) host. Used to build a SYNCABLE HLS url from a
+// Bunny iframe-embed url (the iframe itself is a black box and can't be synced).
+// This is a public hostname (it appears in the video urls), safe to ship.
+const BUNNY_CDN = 'vz-302e6718-16f.b-cdn.net';
+
+// Bunny movies play through the HLS stream so the host's play / pause / seek
+// stays in sync for everyone. This needs, in the Bunny dashboard (Stream >
+// library > Security): "CDN token authentication" OFF and "Enable direct play"
+// ON. If HLS is ever blocked, we auto-fall back to the iframe embed so the
+// movie still plays (just without sync).
+const BUNNY_HLS_SYNC = true;
+
 function extractYouTubeId(input?: string): string {
   if (!input) return '';
   const s = String(input).trim();
@@ -43,9 +56,17 @@ function extractYouTubeId(input?: string): string {
   return '';
 }
 
+// Pull the video GUID out of a Bunny iframe-embed url:
+//   https://iframe.mediadelivery.net/embed/{libraryId}/{videoGuid}?...
+function extractBunnyGuid(embedUrl?: string): string {
+  const m = String(embedUrl || '').match(/\/embed\/\d+\/([0-9a-fA-F-]{8,})/);
+  return m ? m[1] : '';
+}
+
 // YouTube IFrame HTML — same setup as the web app (origin set). onError posts
 // the code so RN can fall back to the full mobile page if a video ever blocks
-// embedding (150/152).
+// embedding (150/152). A 3s "hb" (heartbeat) posts the real current position so
+// the host can keep the room in sync for new joiners (host only emits it).
 function buildYouTubeHtml(videoId: string, startSeconds?: number): string {
   const start = startSeconds && startSeconds > 2 ? Math.floor(startSeconds) : 0;
   return `<!DOCTYPE html>
@@ -63,7 +84,7 @@ function buildYouTubeHtml(videoId: string, startSeconds?: number): string {
   function onYouTubeIframeAPIReady() {
     window.ytPlayer = new YT.Player('player', {
       videoId: '${videoId}',
-      playerVars: { playsinline:1, autoplay:1, rel:0, modestbranding:1, fs:1, controls:1, start:${start}, origin:'${ORIGIN}' },
+      playerVars: { playsinline:1, autoplay:1, rel:0, modestbranding:1, fs:0, controls:1, start:${start}, origin:'${ORIGIN}' },
       events: {
         onReady: function(e){ try { e.target.playVideo(); } catch(err){} post({ type:'ready' }); },
         onStateChange: function(e){
@@ -81,6 +102,17 @@ function buildYouTubeHtml(videoId: string, startSeconds?: number): string {
       }
     });
   }
+  // Position heartbeat — lets the host keep new/old joiners synced to where the
+  // video actually is. Only posts when playing; RN decides whether to broadcast.
+  setInterval(function(){
+    try {
+      var p = window.ytPlayer;
+      if (p && p.getCurrentTime) {
+        var st = p.getPlayerState ? p.getPlayerState() : 1;
+        post({ type:'hb', position: p.getCurrentTime() || 0, playing: st === 1 });
+      }
+    } catch(e){}
+  }, 3000);
 </script>
 </body></html>`;
 }
@@ -91,16 +123,17 @@ function buildHlsHtml(src: string, startSeconds?: number): string {
 <html><head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-<style>*{margin:0;padding:0}html,body{width:100%;height:100%;background:#000;overflow:hidden}#v{width:100%;height:100%;background:#000}</style>
+<style>*{margin:0;padding:0}html,body{width:100%;height:100%;background:#000;overflow:hidden}#v{width:100%;height:100%;background:#000;object-fit:contain}</style>
 </head><body>
-<video id="v" playsinline webkit-playsinline controls autoplay></video>
+<video id="v" playsinline webkit-playsinline controls controlsList="nofullscreen" autoplay></video>
 <script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.13/dist/hls.min.js"></script>
 <script>
   var video = document.getElementById('v');
   var src = ${JSON.stringify(src)};
   var startAt = ${start};
   function post(o){ try{ window.ReactNativeWebView && window.ReactNativeWebView.postMessage(JSON.stringify(o)); }catch(e){} }
-  function ready(){ try { if(startAt>0){ video.currentTime = startAt; } video.play(); }catch(e){} post({type:'ready'}); }
+  var readyFired = false;
+  function ready(){ if(readyFired) return; readyFired = true; try { if(startAt>0){ video.currentTime = startAt; } video.play(); }catch(e){} post({type:'ready'}); }
   video.addEventListener('play',  function(){ post({type:'state', state:1, position: video.currentTime}); });
   video.addEventListener('pause', function(){ post({type:'state', state:2, position: video.currentTime}); });
   video.addEventListener('seeked',function(){ post({type:'state', state:3, position: video.currentTime}); });
@@ -123,6 +156,14 @@ function buildHlsHtml(src: string, startSeconds?: number): string {
     video.src = src;
     video.addEventListener('loadedmetadata', ready);
   }
+  // Watchdog: if playback can't start within 8s (e.g. a token-protected Bunny
+  // url returns 403), tell RN so it falls back to the iframe embed — the movie
+  // still plays instead of showing a black screen.
+  setTimeout(function(){ if(!readyFired){ post({type:'error', detail:'timeout'}); } }, 8000);
+  // Position heartbeat (host keeps joiners synced).
+  setInterval(function(){
+    try { post({ type:'hb', position: video.currentTime || 0, playing: !video.paused }); } catch(e){}
+  }, 3000);
 </script>
 </body></html>`;
 }
@@ -136,8 +177,7 @@ function buildBunnyEmbedHtml(embedUrl: string): string {
 <style>*{margin:0;padding:0}html,body{width:100%;height:100%;background:#000;overflow:hidden}iframe{width:100%;height:100%;border:none}</style>
 </head><body>
 <iframe src="${embedUrl}?autoplay=true&loop=false&muted=false&preload=true&responsive=true"
-  allow="accelerometer;gyroscope;autoplay;encrypted-media;picture-in-picture"
-  allowfullscreen></iframe>
+  allow="accelerometer;gyroscope;autoplay;encrypted-media;picture-in-picture"></iframe>
 <script>
   function post(o){ try{ window.ReactNativeWebView && window.ReactNativeWebView.postMessage(JSON.stringify(o)); }catch(e){} }
   window.ytPlayer = {
@@ -149,10 +189,16 @@ function buildBunnyEmbedHtml(embedUrl: string): string {
 }
 
 // Bunny embed -> iframe. HLS (.m3u8 / b-cdn) -> hls.js. YouTube -> IFrame API. Else -> uri.
-function buildSource(rawUri?: string, startSeconds?: number): any {
+function buildSource(rawUri?: string, startSeconds?: number, forceBunnyIframe?: boolean): any {
   const s = (rawUri || '').trim();
-  // Bunny iframe embed (admin upload)
+  // Bunny iframe embed (admin upload). Prefer the HLS stream so it can SYNC;
+  // only fall back to the (un-syncable) iframe if HLS failed.
   if (/iframe\.mediadelivery\.net\/embed/i.test(s)) {
+    const guid = extractBunnyGuid(s);
+    if (BUNNY_HLS_SYNC && guid && BUNNY_CDN && !forceBunnyIframe) {
+      const hls = `https://${BUNNY_CDN}/${guid}/playlist.m3u8`;
+      return { html: buildHlsHtml(hls, startSeconds), baseUrl: ORIGIN };
+    }
     return { html: buildBunnyEmbedHtml(s), baseUrl: ORIGIN };
   }
   // Bunny HLS stream
@@ -173,8 +219,8 @@ const RoomScreen = () => {
 
   const {
     room, videoState, presentUsers, chatMessages, reactions,
-    loading, isModerator, changeVideo, sendChat, sendReaction, computeExpectedPosition,
-    play, pause, seek,
+    loading, roomEnded, isModerator, changeVideo, sendChat, sendReaction, computeExpectedPosition,
+    play, pause, seek, endRoom,
   } = useRoom(roomId);
 
   const webviewRef = useRef<WebView>(null);
@@ -192,6 +238,8 @@ const RoomScreen = () => {
   const applyingRemoteRef = useRef(false);
   const lastInjectRef = useRef(0);
   const lastHostStateRef = useRef<{ playing: boolean; pos: number }>({ playing: false, pos: 0 });
+  const lastHbEmitRef = useRef(0);            // throttle host position heartbeat
+  const prevMsgCountRef = useRef(0);          // detect new chat messages (fullscreen toast)
 
   const [currentUrl, setCurrentUrl] = useState('');
   const [webLoading, setWebLoading] = useState(true);
@@ -201,12 +249,21 @@ const RoomScreen = () => {
   const [showShare, setShowShare] = useState(false);
   const [shareUrl, setShareUrl] = useState<string | null>(null);
   const [input, setInput] = useState('');
+  const [showEmoji, setShowEmoji] = useState(false);
+  // Fullscreen "new message" popup
+  const [fsToast, setFsToast] = useState<{ name: string; text: string } | null>(null);
   // Safety net: if a YouTube video ever blocks embedding (150/152), load the
   // full mobile page instead. With the correct origin this rarely triggers.
   const [ytFallbackId, setYtFallbackId] = useState<string | null>(null);
+  // If a Bunny HLS stream fails (e.g. token-protected), fall back to the iframe
+  // embed (plays, just without sync) so the video never simply breaks.
+  const [bunnyIframeFallback, setBunnyIframeFallback] = useState(false);
   const rawUriRef = useRef('');
 
   const chatPanelAnim = useRef(new Animated.Value(CHAT_PANEL_WIDTH)).current;
+
+  // Only the OWNER may end the party for everyone.
+  const isOwner = !!room && !!user && room.members.find((m) => m.user.id === user.id)?.role === 'OWNER';
 
   // ===== Player source — MEMOIZED =====
   // Computed only when the actual video (or fallback) changes. This is critical:
@@ -218,11 +275,11 @@ const RoomScreen = () => {
   const playerSource = useMemo(() => {
     if (ytFallbackId) return { uri: `https://m.youtube.com/watch?v=${ytFallbackId}` };
     const start = computeExpectedPosition ? computeExpectedPosition() : 0;
-    return buildSource(rawUri, start);
+    return buildSource(rawUri, start, bunnyIframeFallback);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [rawUri, ytFallbackId]);
+  }, [rawUri, ytFallbackId, bunnyIframeFallback]);
   isHtmlSourceRef.current = !!(playerSource as any).html;
-  const playerKey = ytFallbackId || rawUri || 'player';
+  const playerKey = ytFallbackId || `${bunnyIframeFallback ? 'bf:' : ''}${rawUri}` || 'player';
 
   useEffect(() => {
     const newUrl = videoState?.url;
@@ -232,9 +289,33 @@ const RoomScreen = () => {
       lastReceivedUrl.current = newUrl;
       setCurrentUrl(newUrl);
       setYtFallbackId(null); // new video -> reset fallback
+      setBunnyIframeFallback(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [videoState?.url, currentUrl]);
+
+  // Host ended the room (or someone ended it) -> leave with a notice.
+  useEffect(() => {
+    if (!roomEnded) return;
+    Alert.alert('Watch party ended', 'The host ended this room.', [
+      { text: 'OK', onPress: () => navigation.goBack() },
+    ]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [roomEnded]);
+
+  // Fullscreen: show a popup when a NEW message arrives (from someone else).
+  useEffect(() => {
+    if (chatMessages.length > prevMsgCountRef.current) {
+      const last = chatMessages[chatMessages.length - 1];
+      if (isFullscreen && last && last.senderId !== user?.id) {
+        const name = last.sender.fullName || last.sender.username;
+        setFsToast({ name, text: last.content });
+        setTimeout(() => setFsToast(null), 3500);
+      }
+    }
+    prevMsgCountRef.current = chatMessages.length;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [chatMessages.length, isFullscreen, user?.id]);
 
   const applySyncToPlayer = useCallback(() => {
     if (!playerReadyRef.current || !webviewRef.current) return;
@@ -246,10 +327,14 @@ const RoomScreen = () => {
     const pos = computeExpectedPosition ? computeExpectedPosition() : 0;
     const playing = !!videoState?.isPlaying;
     applyingRemoteRef.current = true;
+    // Drift check is done INSIDE the WebView: only seek if we are more than ~2s
+    // off the host's position. This keeps frequent syncs (host heartbeat) from
+    // causing stutter — we only correct real drift, and always match play/pause.
     const js =
-      '(function(){try{if(window.ytPlayer && window.ytPlayer.seekTo){' +
-      'window.ytPlayer.seekTo(' + (pos || 0) + ', true);' +
-      (playing ? 'window.ytPlayer.playVideo();' : 'window.ytPlayer.pauseVideo();') +
+      '(function(){try{var p=window.ytPlayer;if(p&&p.getCurrentTime){' +
+      'var cur=p.getCurrentTime()||0;var target=' + (pos || 0) + ';' +
+      'if(target>1 && Math.abs(cur-target)>2 && p.seekTo){p.seekTo(target,true);}' +
+      (playing ? 'if(p.playVideo)p.playVideo();' : 'if(p.pauseVideo)p.pauseVideo();') +
       '}}catch(e){}})(); true;';
     webviewRef.current.injectJavaScript(js);
     setTimeout(() => { applyingRemoteRef.current = false; }, 1200);
@@ -270,12 +355,31 @@ const RoomScreen = () => {
       return;
     }
 
+    // Host position heartbeat -> broadcast so new/old joiners sync to the host.
+    // ONLY the host emits this; it never touches the host's own player.
+    if (data.type === 'hb') {
+      if (isModerator && data.playing && typeof data.position === 'number' && data.position > 1) {
+        const now = Date.now();
+        if (now - lastHbEmitRef.current > 2500) {
+          lastHbEmitRef.current = now;
+          seek?.(data.position, true);
+        }
+      }
+      return;
+    }
+
     if (data.type === 'error') {
       // 101/150/152 = embedding disabled; 100 = not found.
       // Reload as the full mobile YouTube page so the video still plays.
       if ([100, 101, 150, 152].includes(data.code)) {
         const id = extractYouTubeId(rawUriRef.current);
         if (id) setYtFallbackId(id);
+        return;
+      }
+      // Bunny HLS failed (often token-protected). Fall back to the iframe embed
+      // so the admin movie still plays (without sync) instead of going black.
+      if (data.detail && /iframe\.mediadelivery\.net\/embed/i.test(rawUriRef.current)) {
+        setBunnyIframeFallback(true);
       }
       return;
     }
@@ -310,7 +414,7 @@ const RoomScreen = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [videoState?.serverTime, videoState?.isPlaying, isModerator, applySyncToPlayer]);
 
-  useEffect(() => { playerReadyRef.current = false; }, [currentUrl, ytFallbackId]);
+  useEffect(() => { playerReadyRef.current = false; }, [currentUrl, ytFallbackId, bunnyIframeFallback]);
 
   const onNavStateChange = useCallback((navState: WebViewNavigation) => {
     setWebLoading(navState.loading);
@@ -358,6 +462,14 @@ const RoomScreen = () => {
 
   const leaveRoom = () => navigation.goBack();
 
+  // Host ends the watch party for everyone.
+  const confirmEnd = () => {
+    Alert.alert('End watch party?', 'This will close the room for everyone watching.', [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'End', style: 'destructive', onPress: () => { endRoom(); navigation.goBack(); } },
+    ]);
+  };
+
   if (loading || !room) {
     return <SafeAreaView style={[styles.root, styles.center]}><ActivityIndicator color={colors.primary} /></SafeAreaView>;
   }
@@ -373,7 +485,7 @@ const RoomScreen = () => {
       onNavigationStateChange={onNavStateChange}
       onShouldStartLoadWithRequest={onShouldStartLoadWithRequest}
       originWhitelist={['*']}
-      javaScriptEnabled domStorageEnabled allowsFullscreenVideo
+      javaScriptEnabled domStorageEnabled allowsFullscreenVideo={false}
       allowsInlineMediaPlayback mediaPlaybackRequiresUserAction={false}
       setSupportMultipleWindows={false} sharedCookiesEnabled thirdPartyCookiesEnabled
       mixedContentMode="always"
@@ -384,106 +496,135 @@ const RoomScreen = () => {
     />
   );
 
-  if (isFullscreen) {
-    return (
-      <View style={styles.fullscreenRoot}>
-        <StatusBar hidden />
-        {WebPlayer}
-        <View style={styles.reactionsOverlay} pointerEvents="none">
-          {reactions.map((r, i) => <FloatingReaction key={`${r.at}-${i}-${r.emoji}`} emoji={r.emoji} />)}
-        </View>
-        <TouchableOpacity onPress={() => setIsFullscreen(false)} style={styles.fsExitBtn}><Icon name="contract-outline" size={20} color="#fff" /></TouchableOpacity>
-        <TouchableOpacity onPress={() => setShowChatPanel(!showChatPanel)} style={styles.fsChatToggle}>
-          <Icon name="chatbubble-ellipses" size={20} color="#fff" />
-          {chatMessages.length > 0 && <View style={styles.fsBadge}><AppText variant="tiny" bold>{chatMessages.length}</AppText></View>}
-        </TouchableOpacity>
-        <Animated.View style={[styles.fsChatPanel, { transform: [{ translateX: chatPanelAnim }] }]}>
-          <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
-            <View style={styles.fsChatHeader}><AppText bold>Chat</AppText><TouchableOpacity onPress={() => setShowChatPanel(false)}><Icon name="close" size={20} color="#fff" /></TouchableOpacity></View>
-            <FlatList ref={chatListRef} data={chatMessages} keyExtractor={(m) => m.id} contentContainerStyle={{ padding: 10 }} keyboardShouldPersistTaps="handled"
-              renderItem={({ item }) => (
-                <View style={styles.fsMessageRow}>
-                  {item.sender.avatarUrl ? <Image source={{ uri: item.sender.avatarUrl }} style={styles.fsAvatar} /> : <View style={[styles.fsAvatar, styles.fsAvatarFallback]}><AppText variant="tiny" bold>{(item.sender.fullName || item.sender.username).slice(0,1).toUpperCase()}</AppText></View>}
-                  <View style={{ flex: 1, marginLeft: 8 }}><AppText variant="tiny" color={colors.textSecondary}>{item.sender.fullName || item.sender.username}</AppText><AppText variant="small">{item.content}</AppText></View>
-                </View>
-              )} />
-            <View style={styles.fsReactionRow}>{REACTIONS.map((r) => <TouchableOpacity key={r} onPress={() => sendReaction(r)}><AppText style={{ fontSize: 22 }}>{r}</AppText></TouchableOpacity>)}</View>
-            <View style={styles.fsInputRow}>
-              <TextInput value={input} onChangeText={setInput} onSubmitEditing={sendText} returnKeyType="send" blurOnSubmit={false} placeholder="Say something…" placeholderTextColor={colors.textMuted} style={styles.fsInput} />
-              <TouchableOpacity onPress={sendText} style={{ padding: 8 }}><Icon name="send" size={20} color={colors.primary} /></TouchableOpacity>
-            </View>
-          </KeyboardAvoidingView>
-        </Animated.View>
-      </View>
-    );
-  }
-
   return (
-    <SafeAreaView style={styles.root} edges={['top']}>
-      <StatusBar barStyle="light-content" />
-      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
-        <View style={styles.header}>
-          <TouchableOpacity onPress={leaveRoom} style={styles.headerBtn}><Icon name="chevron-back" size={22} color={colors.white} /></TouchableOpacity>
-          <View style={{ flex: 1, marginLeft: 8 }}>
-            <AppText bold numberOfLines={1}>{room.name}</AppText>
-            <AppText variant="tiny" color={colors.textSecondary}>{presentUsers.length} watching · Code: {room.code}</AppText>
-          </View>
-          {/* Share via social media (WhatsApp / Instagram / copy link) */}
-          <TouchableOpacity onPress={() => shareMutation.mutate()} style={styles.headerBtn}>
-            {shareMutation.isPending ? <ActivityIndicator size="small" color="#fff" /> : <Icon name="share-social" size={19} color={colors.white} />}
-          </TouchableOpacity>
-          {/* Invite WatchParty friends */}
-          <TouchableOpacity onPress={() => navigation.navigate('InviteFriends', { roomId })} style={styles.headerBtn}>
-            <Icon name="person-add" size={19} color={colors.white} />
-          </TouchableOpacity>
-          <TouchableOpacity onPress={() => setIsFullscreen(true)} style={styles.headerBtn}><Icon name="expand-outline" size={19} color={colors.white} /></TouchableOpacity>
-        </View>
+    <View style={styles.root}>
+      <StatusBar hidden={isFullscreen} barStyle="light-content" />
 
-        <View style={[styles.videoWrap, { height: VIDEO_HEIGHT }]}>
-          {WebPlayer}
-          <View style={styles.reactionsOverlay} pointerEvents="none">{reactions.map((r, i) => <FloatingReaction key={`${r.at}-${i}-${r.emoji}`} emoji={r.emoji} />)}</View>
-          {webLoading && <View style={styles.webLoader} pointerEvents="none"><ActivityIndicator color={colors.primary} /></View>}
-          {!isModerator && <View style={styles.guestBadge}><Icon name="eye" size={12} color="#fff" /><AppText variant="tiny" bold style={{ marginLeft: 4 }}>Watching with host</AppText></View>}
-        </View>
-
-        <View style={styles.reactionRow}>{REACTIONS.map((r) => <TouchableOpacity key={r} onPress={() => sendReaction(r)} style={styles.reactionBtn}><AppText style={{ fontSize: 22 }}>{r}</AppText></TouchableOpacity>)}</View>
-
-        {isChatMinimized ? (
-          <View style={{ flex: 1 }}>
-            <TouchableOpacity onPress={() => setIsChatMinimized(false)} activeOpacity={0.85} style={styles.chatBubble}>
-              <LinearGradient colors={colors.buttonGradient as unknown as string[]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.chatBubbleInner}>
-                <Icon name="chatbubble-ellipses" size={24} color="#fff" />
-                {chatMessages.length > 0 && <View style={styles.chatBubbleBadge}><AppText variant="tiny" bold style={{ color: colors.primary }}>{chatMessages.length > 9 ? '9+' : chatMessages.length}</AppText></View>}
-              </LinearGradient>
-            </TouchableOpacity>
-          </View>
-        ) : (
-          <View style={styles.chatContainer}>
-            <View style={styles.chatHeader}><AppText bold variant="small">Chat with the room</AppText><TouchableOpacity onPress={() => setIsChatMinimized(true)}><Icon name="chevron-down" size={20} color="#fff" /></TouchableOpacity></View>
-            <FlatList ref={chatListRef} data={chatMessages} keyExtractor={(m) => m.id} contentContainerStyle={{ padding: 12, flexGrow: 1 }} keyboardShouldPersistTaps="handled"
-              renderItem={({ item }) => {
-                const mine = item.senderId === user?.id;
-                return (
-                  <View style={[styles.messageRow, mine && { flexDirection: 'row-reverse' }]}>
-                    {item.sender.avatarUrl ? <Image source={{ uri: item.sender.avatarUrl }} style={styles.avatar} /> : <View style={[styles.avatar, styles.avatarFallback]}><AppText variant="tiny" bold>{(item.sender.fullName || item.sender.username).slice(0,1).toUpperCase()}</AppText></View>}
-                    <View style={[styles.bubble, mine ? styles.bubbleMine : styles.bubbleTheirs, mine ? { marginRight: 8 } : { marginLeft: 8 }]}>
-                      {!mine && <AppText variant="tiny" color={colors.textSecondary} style={{ marginBottom: 2 }}>{item.sender.fullName || item.sender.username}</AppText>}
-                      <AppText variant="small">{item.content}</AppText>
-                    </View>
-                  </View>
-                );
-              }}
-              ListEmptyComponent={<View style={{ alignItems: 'center', paddingTop: spacing.lg }}><AppText variant="small" color={colors.textMuted}>Say something to start the chat 👋</AppText></View>} />
-            <View style={styles.inputRow}>
-              <TextInput ref={inputRef} value={input} onChangeText={setInput} onSubmitEditing={sendText} returnKeyType="send" blurOnSubmit={false} placeholder="Say something…" placeholderTextColor={colors.textMuted} style={styles.input} multiline={false} />
-              <TouchableOpacity onPress={sendText} style={styles.sendBtn} hitSlop={10}><Icon name="send" size={20} color={colors.primary} /></TouchableOpacity>
+      {/* Header — hidden in fullscreen */}
+      {!isFullscreen && (
+        <SafeAreaView edges={['top']} style={styles.headerSafe}>
+          <View style={styles.header}>
+            <TouchableOpacity onPress={leaveRoom} style={styles.headerBtn}><Icon name="chevron-back" size={22} color={colors.white} /></TouchableOpacity>
+            <View style={{ flex: 1, marginLeft: 8 }}>
+              <AppText bold numberOfLines={1}>{room.name}</AppText>
+              <AppText variant="tiny" color={colors.textSecondary}>{presentUsers.length} watching · Code: {room.code}</AppText>
             </View>
+            {/* Share via social media (WhatsApp / Instagram / copy link) */}
+            <TouchableOpacity onPress={() => shareMutation.mutate()} style={styles.headerBtn}>
+              {shareMutation.isPending ? <ActivityIndicator size="small" color="#fff" /> : <Icon name="share-social" size={19} color={colors.white} />}
+            </TouchableOpacity>
+            {/* Invite WatchParty friends */}
+            <TouchableOpacity onPress={() => navigation.navigate('InviteFriends', { roomId })} style={styles.headerBtn}>
+              <Icon name="person-add" size={19} color={colors.white} />
+            </TouchableOpacity>
+            <TouchableOpacity onPress={() => setIsFullscreen(true)} style={styles.headerBtn}><Icon name="expand-outline" size={19} color={colors.white} /></TouchableOpacity>
+            {/* Host only: end the party for everyone */}
+            {isOwner && (
+              <TouchableOpacity onPress={confirmEnd} style={styles.headerBtn}>
+                <Icon name="power" size={19} color="#FF5A5A" />
+              </TouchableOpacity>
+            )}
           </View>
+        </SafeAreaView>
+      )}
+
+      {/* VIDEO LAYER — kept at ONE fixed tree position so the WebView is never
+          unmounted when toggling fullscreen (that remount was reloading the
+          movie from 0). Only its style changes between inline and fullscreen. */}
+      <View style={isFullscreen ? styles.fsVideoLayer : [styles.videoWrap, { height: VIDEO_HEIGHT }]}>
+        {WebPlayer}
+        <View style={styles.reactionsOverlay} pointerEvents="none">{reactions.map((r, i) => <FloatingReaction key={`${r.at}-${i}-${r.emoji}`} emoji={r.emoji} />)}</View>
+        {webLoading && !isFullscreen && <View style={styles.webLoader} pointerEvents="none"><ActivityIndicator color={colors.primary} /></View>}
+        {!isModerator && !isFullscreen && <View style={styles.guestBadge}><Icon name="eye" size={12} color="#fff" /><AppText variant="tiny" bold style={{ marginLeft: 4 }}>Watching with host</AppText></View>}
+
+        {/* Fullscreen-only overlays (drawn on top of the video) */}
+        {isFullscreen && (
+          <>
+            {fsToast && (
+              <View style={styles.fsToast} pointerEvents="none">
+                <Icon name="chatbubble-ellipses" size={16} color={colors.primary} style={{ marginRight: 8 }} />
+                <View style={{ flex: 1 }}>
+                  <AppText variant="tiny" bold numberOfLines={1}>{fsToast.name}</AppText>
+                  <AppText variant="tiny" color={colors.textSecondary} numberOfLines={1}>{fsToast.text}</AppText>
+                </View>
+              </View>
+            )}
+            <TouchableOpacity onPress={() => setIsFullscreen(false)} style={styles.fsExitBtn}><Icon name="contract-outline" size={20} color="#fff" /></TouchableOpacity>
+            <TouchableOpacity onPress={() => setShowChatPanel(!showChatPanel)} style={styles.fsChatToggle}>
+              <Icon name="chatbubble-ellipses" size={20} color="#fff" />
+              {chatMessages.length > 0 && <View style={styles.fsBadge}><AppText variant="tiny" bold>{chatMessages.length}</AppText></View>}
+            </TouchableOpacity>
+            <Animated.View style={[styles.fsChatPanel, { transform: [{ translateX: chatPanelAnim }] }]}>
+              <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+                <View style={styles.fsChatHeader}><AppText bold>Chat</AppText><TouchableOpacity onPress={() => setShowChatPanel(false)}><Icon name="close" size={20} color="#fff" /></TouchableOpacity></View>
+                <FlatList ref={chatListRef} data={chatMessages} keyExtractor={(m) => m.id} contentContainerStyle={{ padding: 10 }} keyboardShouldPersistTaps="handled"
+                  renderItem={({ item }) => (
+                    <View style={styles.fsMessageRow}>
+                      {item.sender.avatarUrl ? <Image source={{ uri: item.sender.avatarUrl }} style={styles.fsAvatar} /> : <View style={[styles.fsAvatar, styles.fsAvatarFallback]}><AppText variant="tiny" bold>{(item.sender.fullName || item.sender.username).slice(0,1).toUpperCase()}</AppText></View>}
+                      <View style={{ flex: 1, marginLeft: 8 }}><AppText variant="tiny" color={colors.textSecondary}>{item.sender.fullName || item.sender.username}</AppText><AppText variant="small">{item.content}</AppText></View>
+                    </View>
+                  )} />
+                <View style={styles.fsReactionRow}>{REACTIONS.map((r) => <TouchableOpacity key={r} onPress={() => sendReaction(r)}><AppText style={{ fontSize: 22 }}>{r}</AppText></TouchableOpacity>)}</View>
+                {showEmoji && (
+                  <EmojiPicker onSelect={(e) => setInput((prev) => prev + e)} onClose={() => setShowEmoji(false)} />
+                )}
+                <View style={styles.fsInputRow}>
+                  <TouchableOpacity onPress={() => setShowEmoji((s) => !s)} style={{ padding: 8 }} hitSlop={10}><Icon name={showEmoji ? 'close' : 'happy-outline'} size={22} color={colors.textSecondary} /></TouchableOpacity>
+                  <TextInput value={input} onChangeText={setInput} onFocus={() => setShowEmoji(false)} onSubmitEditing={sendText} returnKeyType="send" blurOnSubmit={false} placeholder="Say something…" placeholderTextColor={colors.textMuted} style={styles.fsInput} />
+                  <TouchableOpacity onPress={sendText} style={{ padding: 8 }}><Icon name="send" size={20} color={colors.primary} /></TouchableOpacity>
+                </View>
+              </KeyboardAvoidingView>
+            </Animated.View>
+          </>
         )}
-      </KeyboardAvoidingView>
+      </View>
+
+      {/* Normal-mode content below the video */}
+      {!isFullscreen && (
+        <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+          <View style={styles.reactionRow}>{REACTIONS.map((r) => <TouchableOpacity key={r} onPress={() => sendReaction(r)} style={styles.reactionBtn}><AppText style={{ fontSize: 22 }}>{r}</AppText></TouchableOpacity>)}</View>
+
+          {isChatMinimized ? (
+            <View style={{ flex: 1 }}>
+              <TouchableOpacity onPress={() => setIsChatMinimized(false)} activeOpacity={0.85} style={styles.chatBubble}>
+                <LinearGradient colors={colors.buttonGradient as unknown as string[]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.chatBubbleInner}>
+                  <Icon name="chatbubble-ellipses" size={24} color="#fff" />
+                  {chatMessages.length > 0 && <View style={styles.chatBubbleBadge}><AppText variant="tiny" bold style={{ color: colors.primary }}>{chatMessages.length > 9 ? '9+' : chatMessages.length}</AppText></View>}
+                </LinearGradient>
+              </TouchableOpacity>
+            </View>
+          ) : (
+            <View style={styles.chatContainer}>
+              <View style={styles.chatHeader}><AppText bold variant="small">Chat with the room</AppText><TouchableOpacity onPress={() => setIsChatMinimized(true)}><Icon name="chevron-down" size={20} color="#fff" /></TouchableOpacity></View>
+              <FlatList ref={chatListRef} data={chatMessages} keyExtractor={(m) => m.id} contentContainerStyle={{ padding: 12, flexGrow: 1 }} keyboardShouldPersistTaps="handled"
+                renderItem={({ item }) => {
+                  const mine = item.senderId === user?.id;
+                  return (
+                    <View style={[styles.messageRow, mine && { flexDirection: 'row-reverse' }]}>
+                      {item.sender.avatarUrl ? <Image source={{ uri: item.sender.avatarUrl }} style={styles.avatar} /> : <View style={[styles.avatar, styles.avatarFallback]}><AppText variant="tiny" bold>{(item.sender.fullName || item.sender.username).slice(0,1).toUpperCase()}</AppText></View>}
+                      <View style={[styles.bubble, mine ? styles.bubbleMine : styles.bubbleTheirs, mine ? { marginRight: 8 } : { marginLeft: 8 }]}>
+                        {!mine && <AppText variant="tiny" color={colors.textSecondary} style={{ marginBottom: 2 }}>{item.sender.fullName || item.sender.username}</AppText>}
+                        <AppText variant="small">{item.content}</AppText>
+                      </View>
+                    </View>
+                  );
+                }}
+                ListEmptyComponent={<View style={{ alignItems: 'center', paddingTop: spacing.lg }}><AppText variant="small" color={colors.textMuted}>Say something to start the chat 👋</AppText></View>} />
+              {showEmoji && (
+                <EmojiPicker onSelect={(e) => setInput((prev) => prev + e)} onClose={() => setShowEmoji(false)} />
+              )}
+              <View style={styles.inputRow}>
+                <TouchableOpacity onPress={() => setShowEmoji((s) => !s)} style={styles.emojiBtn} hitSlop={10}><Icon name={showEmoji ? 'close' : 'happy-outline'} size={22} color={colors.textSecondary} /></TouchableOpacity>
+                <TextInput ref={inputRef} value={input} onChangeText={setInput} onFocus={() => setShowEmoji(false)} onSubmitEditing={sendText} returnKeyType="send" blurOnSubmit={false} placeholder="Say something…" placeholderTextColor={colors.textMuted} style={styles.input} multiline={false} />
+                <TouchableOpacity onPress={sendText} style={styles.sendBtn} hitSlop={10}><Icon name="send" size={20} color={colors.primary} /></TouchableOpacity>
+              </View>
+            </View>
+          )}
+        </KeyboardAvoidingView>
+      )}
 
       <ShareModal visible={showShare && !!shareUrl} onClose={() => setShowShare(false)} title={room.name || 'Watch Party'} subtitle="WatchPartyLive" thumbnailUrl={room.thumbnailUrl || undefined} shareUrl={shareUrl || ''} />
-    </SafeAreaView>
+    </View>
   );
 };
 
@@ -500,6 +641,19 @@ const FloatingReaction: React.FC<{ emoji: string }> = ({ emoji }) => {
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: '#0a0a0a' },
+  headerSafe: { backgroundColor: '#0a0a0a' },
+  // Fullscreen = rotate the whole video layer to landscape and size it to the
+  // screen, so a 16:9 movie fills the display (turn the phone sideways). The
+  // WebView stays mounted (only its style changes) so the video keeps playing.
+  fsVideoLayer: {
+    position: 'absolute',
+    width: SCREEN_H,
+    height: SCREEN_W,
+    left: (SCREEN_W - SCREEN_H) / 2,
+    top: (SCREEN_H - SCREEN_W) / 2,
+    transform: [{ rotate: '90deg' }],
+    backgroundColor: '#000',
+  },
   fullscreenRoot: { flex: 1, backgroundColor: '#000' },
   center: { alignItems: 'center', justifyContent: 'center' },
   webview: { flex: 1, backgroundColor: '#000' },
@@ -520,11 +674,13 @@ const styles = StyleSheet.create({
   bubbleMine: { backgroundColor: colors.primary },
   bubbleTheirs: { backgroundColor: 'rgba(255,255,255,0.1)' },
   inputRow: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 10, backgroundColor: 'rgba(0,0,0,0.5)', borderTopWidth: 0.5, borderTopColor: 'rgba(255,255,255,0.1)' },
+  emojiBtn: { paddingRight: 8, paddingVertical: 4 },
   input: { flex: 1, backgroundColor: 'rgba(255,255,255,0.1)', borderRadius: 20, paddingHorizontal: 14, color: '#fff', height: 40, fontFamily: 'SchibstedGrotesk' },
   sendBtn: { padding: 8, marginLeft: 4 },
   chatBubble: { position: 'absolute', bottom: 24, right: 24, width: 60, height: 60, elevation: 8, shadowColor: '#000', shadowOpacity: 0.4, shadowRadius: 10, shadowOffset: { width: 0, height: 4 } },
   chatBubbleInner: { flex: 1, borderRadius: 30, alignItems: 'center', justifyContent: 'center' },
   chatBubbleBadge: { position: 'absolute', top: -2, right: -2, minWidth: 22, height: 22, paddingHorizontal: 5, borderRadius: 11, backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: '#0a0a0a' },
+  fsToast: { position: 'absolute', top: 50, left: 16, right: 70, flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(10,10,14,0.92)', borderWidth: 1, borderColor: 'rgba(238,48,99,0.4)', borderRadius: 12, paddingHorizontal: 12, paddingVertical: 8 },
   fsExitBtn: { position: 'absolute', top: 50, left: 16, width: 40, height: 40, borderRadius: 20, backgroundColor: 'rgba(0,0,0,0.6)', alignItems: 'center', justifyContent: 'center' },
   fsChatToggle: { position: 'absolute', top: 50, right: 16, width: 44, height: 44, borderRadius: 22, backgroundColor: 'rgba(0,0,0,0.6)', alignItems: 'center', justifyContent: 'center' },
   fsBadge: { position: 'absolute', top: -4, right: -4, minWidth: 20, height: 20, paddingHorizontal: 4, borderRadius: 10, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center' },

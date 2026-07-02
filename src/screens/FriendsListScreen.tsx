@@ -146,12 +146,17 @@ const FriendsListScreen = () => {
                   item.username,
                 )}&backgroundColor=ffdfbf`;
               const openChat = () => openDirectMutation.mutate(item.id);
+              const openProfile = () =>
+                navigation.navigate('UserProfile', {
+                  username: item.username,
+                  userId: item.id,
+                });
               return (
-                // Whole row is tappable -> opens the chat with this friend.
+                // Tap the row -> open this friend's profile. Tap the chat icon -> message them.
                 <TouchableOpacity
                   style={styles.row}
                   activeOpacity={0.85}
-                  onPress={openChat}>
+                  onPress={openProfile}>
                   <View>
                     <Image source={{ uri: avatar }} style={styles.avatar} />
                     {item.isOnline && <View style={styles.onlineDot} />}

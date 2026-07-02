@@ -23,6 +23,10 @@ const ICONS: Record<string, string> = {
   CONTENT_LIKE:    'thumbs-up',
   COMMENT:         'chatbubble-ellipses',
   LIVE:            'radio',
+  PARTY_STARTED:   'play-circle',
+  PARTY_REMINDER:  'alarm',
+  PLAYBACK:        'pause-circle',
+  MENTION:         'at',
   SYSTEM:          'notifications',
 };
 
@@ -109,6 +113,17 @@ const NotificationsScreen = () => {
         } else if (data.username) {
           navigation.navigate('PodcastHostProfile', { username: data.username });
         }
+        break;
+      case 'PARTY_STARTED':
+      case 'PARTY_REMINDER':
+      case 'PLAYBACK':
+        // Open the watch party room
+        if (data.roomId) navigation.navigate('Room', { roomId: data.roomId });
+        break;
+      case 'MENTION':
+        // Mentioned in a room chat -> room; in a DM -> that chat
+        if (data.roomId) navigation.navigate('Room', { roomId: data.roomId });
+        else if (data.chatId) navigation.navigate('ChatDetail', { chatId: data.chatId });
         break;
       default:
         break;

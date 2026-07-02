@@ -22,6 +22,10 @@ const NOTIF_TYPES: { key: string; icon: string; label: string; desc: string }[] 
   { key: 'CONTENT_LIKE',   icon: 'thumbs-up',            label: 'Likes',            desc: 'Likes on your content' },
   { key: 'COMMENT',        icon: 'chatbubble-ellipses',  label: 'Comments',         desc: 'Comments on your content' },
   { key: 'LIVE',           icon: 'radio',                label: 'Live streams',     desc: 'When creators you follow go live' },
+  { key: 'PARTY_STARTED',  icon: 'play-circle',          label: 'Watch parties',    desc: 'When a friend starts a watch party' },
+  { key: 'PARTY_REMINDER', icon: 'alarm',                label: 'Party reminders',  desc: 'Reminders for upcoming parties' },
+  { key: 'PLAYBACK',       icon: 'pause-circle',         label: 'Playback',         desc: 'When the host plays or pauses' },
+  { key: 'MENTION',        icon: 'at',                   label: 'Mentions',         desc: 'When someone @mentions you' },
   { key: 'SYSTEM',         icon: 'notifications',        label: 'System & updates', desc: 'Important announcements' },
 ];
 

@@ -184,8 +184,13 @@ const ManageScreen = () => {
     const av = u.avatarUrl || item.avatarUrl
       || `https://api.dicebear.com/7.x/avataaars/png?seed=${encodeURIComponent(uname || 'user')}&backgroundColor=ffdfbf`;
     const tierLabel = item.tier || u.tier;
+    const uid = u.id || item.userId || item.id;
+    const openProfile = () => {
+      if (!uname && !uid) return;
+      navigation.navigate('UserProfile', { username: uname || undefined, userId: uid || undefined });
+    };
     return (
-      <View style={styles.row}>
+      <TouchableOpacity style={styles.row} activeOpacity={0.85} onPress={openProfile}>
         <Image source={{ uri: av }} style={styles.avatar} />
         <View style={{ flex: 1, marginLeft: 12 }}>
           <AppText bold numberOfLines={1}>{fname}</AppText>
@@ -193,7 +198,8 @@ const ManageScreen = () => {
             {uname ? `@${uname}` : ''}{showTier && tierLabel ? ` · ${tierLabel}` : ''}
           </AppText>
         </View>
-      </View>
+        <Icon name="chevron-forward" size={16} color={colors.textMuted} />
+      </TouchableOpacity>
     );
   };
 
