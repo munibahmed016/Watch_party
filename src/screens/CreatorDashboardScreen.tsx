@@ -15,13 +15,23 @@ import { analyticsApi, subscriptionsApi } from '@/lib/api';
 
 const fmt = (n: number) => (n >= 1_000_000 ? `${(n / 1e6).toFixed(1)}M` : n >= 1000 ? `${(n / 1000).toFixed(1)}K` : `${n}`);
 
-const Metric: React.FC<{ icon: string; value: number; label: string }> = ({ icon, value, label }) => (
-  <View style={styles.metric}>
-    <Icon name={icon} size={18} color={colors.primary} />
-    <AppText variant="h3" bold style={{ marginTop: 6 }}>{fmt(value)}</AppText>
-    <AppText variant="tiny" color={colors.textSecondary}>{label}</AppText>
-  </View>
-);
+// Wraps a Metric tile in a TouchableOpacity only when a real destination
+// screen exists for it — most of these metrics (Followers, Subscribers,
+// Likes, Comments, Shares, Lives, Events, Rooms, Room Chats) don't have a
+// dedicated list screen anywhere in the app yet, so making them "clickable"
+// would just crash on navigate(). Only "Content" has a real home right now
+// (CreatorUploadScreen, which already lists "My Uploads").
+const Metric: React.FC<{ icon: string; value: number; label: string; onPress?: () => void }> = ({ icon, value, label, onPress }) => {
+  const Wrapper = onPress ? TouchableOpacity : View;
+  return (
+    <Wrapper style={styles.metric} activeOpacity={onPress ? 0.8 : 1} onPress={onPress}>
+      <Icon name={icon} size={18} color={colors.primary} />
+      <AppText variant="h3" bold style={{ marginTop: 6 }}>{fmt(value)}</AppText>
+      <AppText variant="tiny" color={colors.textSecondary}>{label}</AppText>
+      {onPress && <Icon name="chevron-forward" size={12} color={colors.textMuted} style={styles.metricChevron} />}
+    </Wrapper>
+  );
+};
 
 const CreatorDashboardScreen = () => {
   const navigation = useNavigation<any>();
@@ -66,18 +76,18 @@ const CreatorDashboardScreen = () => {
           </TouchableOpacity>
         )}
 
-        {/* metrics grid */}
+        {/* metrics grid — only "Content" routes anywhere for now (see note above) */}
         <View style={styles.grid}>
-          <Metric icon="people" value={d.totals.followers} label="Followers" />
-          <Metric icon="star" value={d.totals.subscribers} label="Subscribers" />
+          <Metric icon="people" value={d.totals.followers} label="Followers" onPress={() => navigation.navigate('Followers')} />
+          <Metric icon="star" value={d.totals.subscribers} label="Subscribers" onPress={() => navigation.navigate('Subscribers')} />
           <Metric icon="eye" value={d.totals.totalViews} label="Views" />
-          <Metric icon="film" value={d.totals.content} label="Content" />
-          <Metric icon="heart" value={d.totals.totalLikes} label="Likes" />
-          <Metric icon="chatbubble" value={d.totals.totalComments} label="Comments" />
-          <Metric icon="share-social" value={d.totals.totalShares} label="Shares" />
-          <Metric icon="radio" value={d.totals.liveSessions} label="Lives" />
-          <Metric icon="calendar" value={d.totals.events} label="Events" />
-          <Metric icon="tv" value={d.totals.rooms} label="Rooms" />
+          <Metric icon="film" value={d.totals.content} label="Content" onPress={() => navigation.navigate('CreatorUpload')} />
+          <Metric icon="heart" value={d.totals.totalLikes} label="Likes" onPress={() => navigation.navigate('ContentLikes')} />
+          <Metric icon="chatbubble" value={d.totals.totalComments} label="Comments" onPress={() => navigation.navigate('ContentComments')} />
+          <Metric icon="share-social" value={d.totals.totalShares} label="Shares" onPress={() => navigation.navigate('ContentShares')} />
+          <Metric icon="radio" value={d.totals.liveSessions} label="Lives" onPress={() => navigation.navigate('LiveSessions')} />
+          <Metric icon="calendar" value={d.totals.events} label="Events" onPress={() => navigation.navigate('MyEvents')} />
+          <Metric icon="tv" value={d.totals.rooms} label="Rooms" onPress={() => navigation.navigate('MyRooms')} />
           <Metric icon="chatbubbles" value={d.totals.roomChats} label="Room Chats" />
         </View>
 
@@ -91,17 +101,18 @@ const CreatorDashboardScreen = () => {
           ))}
         </View>
 
-        {/* top content */}
+        {/* top content — tap to manage it in My Uploads */}
         {d.topContent.length > 0 && (
           <>
             <GradientText variant="h3" style={{ marginTop: spacing.xl, marginBottom: spacing.md, lineHeight: 28, paddingBottom: 2 }}>Top Content</GradientText>
             {d.topContent.map((c) => (
-              <View key={c.id} style={styles.row}>
+              <TouchableOpacity key={c.id} style={styles.row} activeOpacity={0.8} onPress={() => navigation.navigate('CreatorUpload')}>
                 <AppText variant="small" bold style={{ flex: 1 }} numberOfLines={1}>{c.title}</AppText>
                 <Stat icon="eye" v={c.viewCount} />
                 <Stat icon="heart" v={c.likeCount} />
                 <Stat icon="chatbubble" v={c.commentCount} />
-              </View>
+                <Icon name="chevron-forward" size={14} color={colors.textMuted} style={{ marginLeft: 8 }} />
+              </TouchableOpacity>
             ))}
           </>
         )}
@@ -111,11 +122,11 @@ const CreatorDashboardScreen = () => {
           <>
             <GradientText variant="h3" style={{ marginTop: spacing.xl, marginBottom: spacing.md, lineHeight: 28, paddingBottom: 2 }}>Your Events</GradientText>
             {d.events.map((e) => (
-              <View key={e.id} style={styles.row}>
+              <TouchableOpacity key={e.id} style={styles.row} activeOpacity={0.8} onPress={() => navigation.navigate('MyEvents')}>
                 <Icon name="calendar" size={14} color={colors.primary} style={{ marginRight: 8 }} />
                 <AppText variant="small" style={{ flex: 1 }} numberOfLines={1}>{e.title}</AppText>
                 <AppText variant="tiny" color={colors.textSecondary}>{e.status}</AppText>
-              </View>
+              </TouchableOpacity>
             ))}
           </>
         )}
@@ -137,8 +148,9 @@ const styles = StyleSheet.create({
   grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
   metric: {
     width: '30.5%', backgroundColor: 'rgba(255,255,255,0.05)', borderWidth: 1, borderColor: colors.border,
-    borderRadius: layout.radius.md, paddingVertical: spacing.md, alignItems: 'center',
+    borderRadius: layout.radius.md, paddingVertical: spacing.md, alignItems: 'center', position: 'relative',
   },
+  metricChevron: { position: 'absolute', top: 8, right: 8 },
   chart: { flexDirection: 'row', alignItems: 'flex-end', height: 100, gap: 4, backgroundColor: 'rgba(255,255,255,0.03)', borderRadius: layout.radius.md, padding: spacing.sm },
   barCol: { flex: 1, alignItems: 'center', justifyContent: 'flex-end' },
   bar: { width: '70%', backgroundColor: colors.primary, borderRadius: 3 },

@@ -1023,6 +1023,20 @@ export const creatorsApi = {
   eventsByUsername: (username: string) =>
     request<{ items: CreatorEvent[] }>(`/creators/${encodeURIComponent(username)}/events`),
 
+  // My dashboard drill-down lists (paginated: { items, page, limit, total })
+  myFollowers: (page = 1, limit = 30) =>
+    request<{ items: PublicUser[]; page: number; limit: number; total: number }>(`/creators/me/followers?page=${page}&limit=${limit}`),
+  mySubscribers: (page = 1, limit = 30) =>
+    request<{ items: (PublicUser & { tier: string; subscribedAt: string })[]; page: number; limit: number; total: number }>(`/creators/me/subscribers?page=${page}&limit=${limit}`),
+  myContentLikes: (page = 1, limit = 30) =>
+    request<{ items: { id: string; user: PublicUser; content: { id: string; title: string; thumbnailUrl: string | null }; createdAt: string }[]; page: number; limit: number; total: number }>(`/creators/me/likes?page=${page}&limit=${limit}`),
+  myContentComments: (page = 1, limit = 30) =>
+    request<{ items: { id: string; body: string; user: PublicUser; content: { id: string; title: string; thumbnailUrl: string | null }; createdAt: string }[]; page: number; limit: number; total: number }>(`/creators/me/comments?page=${page}&limit=${limit}`),
+  myContentShares: (page = 1, limit = 30) =>
+    request<{ items: { id: string; channel: string | null; user: PublicUser; content: { id: string; title: string; thumbnailUrl: string | null }; createdAt: string }[]; page: number; limit: number; total: number }>(`/creators/me/shares?page=${page}&limit=${limit}`),
+  myLiveSessions: (page = 1, limit = 30) =>
+    request<{ items: { id: string; title: string; description: string | null; thumbnailUrl: string | null; status: 'LIVE' | 'ENDED'; viewerCount: number; peakViewers: number; startedAt: string; endedAt: string | null }[]; page: number; limit: number; total: number }>(`/creators/me/live-sessions?page=${page}&limit=${limit}`),
+
   // My content (creator)
   myContent: (format?: CreatorContentFormat) =>
     request<{ items: CreatorContent[] }>(`/creators/me/content${format ? `?format=${format}` : ''}`),

@@ -82,7 +82,7 @@ const AdminDashboardScreen = () => {
               <ClickableStat style={{ flex: 1 }} onPress={() => navigation.navigate('AdminUsers')}>
                 <StatCard value={s?.users ?? 0} label="Total Users" accent />
               </ClickableStat>
-              <ClickableStat style={{ flex: 1 }} onPress={() => navigation.navigate('AdminSubscriptions')}>
+              <ClickableStat style={{ flex: 1 }} onPress={() => navigation.navigate('AdminUsers', { filter: 'subscribed' })}>
                 <StatCard value={s?.subscribedUsers ?? 0} label="Subscribed" />
               </ClickableStat>
               <ClickableStat style={{ flex: 1 }} onPress={() => navigation.navigate('AdminContent')}>

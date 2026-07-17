@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { View, StyleSheet, TextInput, TouchableOpacity, FlatList, Alert, ActivityIndicator, RefreshControl } from 'react-native';
 import Icon from 'react-native-vector-icons/Ionicons';
 import { useNavigation, useRoute } from '@react-navigation/native';
@@ -13,7 +13,7 @@ import layout from '@/constants/layout';
 import { adminApi } from '@/lib/api';
 import { showApiError } from '@/hooks/useApiErrorAlert';
 
-type UserFilter = 'all' | 'verified' | 'banned' | 'admin';
+type UserFilter = 'all' | 'verified' | 'banned' | 'admin' | 'subscribed';
 
 const AdminUsersScreen = () => {
   const navigation = useNavigation<any>();
@@ -23,6 +23,16 @@ const AdminUsersScreen = () => {
   // Dashboard tiles ("Verified" / "Banned") land here with a filter param so
   // only that subset shows, instead of dumping the whole user list.
   const [filter, setFilter] = useState<UserFilter>((route.params?.filter as UserFilter) || 'all');
+
+  // Re-apply the dashboard's requested filter every time route.params.filter
+  // changes. useState's initial value only runs on the very first mount — if
+  // this screen was already on top of the stack (e.g. tapping "Subscribed"
+  // right after "Verified"), React Navigation just updates params on the
+  // existing instance instead of remounting it, so the filter would
+  // otherwise silently stay stuck on whatever it was before.
+  useEffect(() => {
+    if (route.params?.filter) setFilter(route.params.filter as UserFilter);
+  }, [route.params?.filter]);
 
   const listQ = useQuery({ queryKey: ['admin', 'users', search], queryFn: () => adminApi.listUsers(search) });
 
@@ -37,18 +47,21 @@ const AdminUsersScreen = () => {
     onError: (e) => showApiError(e, 'Could not delete.'),
   });
 
-  const allUsers = listQ.data?.users || [];
   const users = useMemo(() => {
+    const allUsers = listQ.data?.users || [];
     switch (filter) {
       case 'verified': return allUsers.filter((u: any) => u.isVerified);
       case 'banned': return allUsers.filter((u: any) => u.isBanned);
       case 'admin': return allUsers.filter((u: any) => u.isAdmin);
+      // Real paid subscribers = planTier PRO/ADVANCE (BASIC is the free tier).
+      case 'subscribed': return allUsers.filter((u: any) => u.planTier && u.planTier !== 'BASIC');
       default: return allUsers;
     }
-  }, [allUsers, filter]);
+  }, [listQ.data?.users, filter]);
 
   const FILTERS: { key: UserFilter; label: string; icon: string }[] = [
     { key: 'all', label: 'All', icon: 'people' },
+    { key: 'subscribed', label: 'Subscribed', icon: 'card' },
     { key: 'verified', label: 'Verified', icon: 'shield-checkmark' },
     { key: 'banned', label: 'Banned', icon: 'ban' },
     { key: 'admin', label: 'Admins', icon: 'star' },
@@ -111,7 +124,7 @@ const AdminUsersScreen = () => {
                   {item.isAdmin && <View style={[styles.tag, { backgroundColor: 'rgba(238,48,99,0.2)' }]}><AppText variant="tiny" bold color={colors.primary}>ADMIN</AppText></View>}
                   {item.isVerified && <View style={[styles.tag, { backgroundColor: 'rgba(34,197,94,0.2)' }]}><AppText variant="tiny" bold color="#22C55E">VERIFIED</AppText></View>}
                   {item.isBanned && <View style={[styles.tag, { backgroundColor: 'rgba(229,72,77,0.2)' }]}><AppText variant="tiny" bold color="#E5484D">BANNED</AppText></View>}
-                  {item.plan?.name && <View style={[styles.tag, { backgroundColor: 'rgba(123,97,255,0.2)' }]}><AppText variant="tiny" bold color="#7B61FF">{item.plan.name}</AppText></View>}
+                  {item.planTier && item.planTier !== 'BASIC' && <View style={[styles.tag, { backgroundColor: 'rgba(123,97,255,0.2)' }]}><AppText variant="tiny" bold color="#7B61FF">{item.planTier}</AppText></View>}
                 </View>
                 <AppText variant="tiny" color={colors.textSecondary} numberOfLines={1}>{item.email}</AppText>
               </View>

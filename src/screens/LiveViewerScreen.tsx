@@ -14,6 +14,7 @@ import AppText from '@/components/AppText';
 import colors from '@/constants/colors';
 import { creatorsApi, LiveKitJoin } from '@/lib/api';
 import { showApiError } from '@/hooks/useApiErrorAlert';
+import LiveComments from '@/components/LiveComments';
 
 const LiveViewerScreen = () => {
   const navigation = useNavigation<any>();
@@ -51,7 +52,7 @@ const LiveViewerScreen = () => {
       }
     })();
     return () => { mounted = false; };
-  }, [sessionId]);
+  }, [sessionId, titleParam]);
 
   const leave = useCallback(() => {
     navigation.goBack();
@@ -141,6 +142,10 @@ const Viewer: React.FC<{ title: string; onLeave: () => void; onEnded: () => void
           <Icon name="close" size={20} color={colors.white} />
         </TouchableOpacity>
       </View>
+
+      {/* Instagram-style live comments — sits above the title bar, doesn't
+          move or replace anything already on screen. */}
+      <LiveComments bottomOffset={105} />
 
       {/* title */}
       <View style={styles.titleBar}>

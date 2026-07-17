@@ -30,6 +30,14 @@ import PlansScreen from '@/screens/PlansScreen';
 import BecomeCreatorScreen from '@/screens/BecomeCreatorScreen';
 import CreatorUploadScreen from '@/screens/CreatorUploadScreen';
 import CreatorDashboardScreen from '@/screens/CreatorDashboardScreen';
+import MyEventsScreen from '@/screens/Myeventsscreen';
+import MyRoomsScreen from '@/screens/Myroomsscreen';
+import FollowersScreen from '@/screens/FollowersScreen';
+import SubscribersScreen from '@/screens/SubscribersScreen';
+import ContentLikesScreen from '@/screens/ContentLikesScreen';
+import ContentCommentsScreen from '@/screens/ContentCommentsScreen';
+import ContentSharesScreen from '@/screens/ContentSharesScreen';
+import LiveSessionsScreen from '@/screens/LiveSessionsScreen';
 import MyProfileScreen from '@/screens/MyProfileScreen';
 import GoLiveScreen from '@/screens/GoLiveScreen';
 import CreateEventScreen from '@/screens/CreateEventScreen';
@@ -41,8 +49,9 @@ import InviteFriendsScreen from '@/screens/InviteFriendsScreen';
 import FriendsListScreen from '@/screens/FriendsListScreen';
 import WatchPartyMoviesScreen from '@/screens/WatchPartyMoviesScreen';
 import LiveViewerScreen from '@/screens/LiveViewerScreen';
-import ManageScreen from '@/screens/ManageScreen';
 import UserProfileScreen from '@/screens/UserProfileScreen';
+import ManageScreen from '@/screens/ManageScreen';
+
 
 
 export type RootStackParamList = {
@@ -69,6 +78,14 @@ export type RootStackParamList = {
   BecomeCreator: undefined;
   CreatorUpload: undefined;
   CreatorDashboard: undefined;
+  MyEvents: undefined;
+  MyRooms: undefined;
+  Followers: undefined;
+  Subscribers: undefined;
+  ContentLikes: undefined;
+  ContentComments: undefined;
+  ContentShares: undefined;
+  LiveSessions: undefined;
   MyProfile: undefined;
   ChatDetail: { chatId: string; name?: string; avatar?: string };
   VideoPicker: { source?: 'youtube' | 'vimeo' } | undefined;
@@ -86,9 +103,8 @@ InviteFriends: { roomId: string };
   FriendsList: undefined;
   WatchPartyMovies: undefined;
   LiveViewer: { sessionId: string; title?: string };
-  ManageProfile: { tab?: 'rooms' | 'following' | 'subscriptions' | 'followers' | 'subscribers' } | undefined;
   UserProfile: { username?: string; userId?: string } | undefined;
-
+  ManageProfile: { tab?: 'rooms' | 'following' | 'subscriptions' | 'followers' | 'subscribers' } | undefined;
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -118,8 +134,6 @@ const RootNavigator: React.FC = () => {
       <Stack.Screen name="ProfilePictureAdded" component={ProfilePictureAddedScreen} />
       <Stack.Screen name="ContactPermission" component={ContactPermissionScreen} />
       <Stack.Screen name="LiveViewer" component={LiveViewerScreen} />
-      <Stack.Screen name="UserProfile" component={UserProfileScreen} />
-
 
 
       {/* Friends */}
@@ -130,8 +144,6 @@ const RootNavigator: React.FC = () => {
 
       {/* Main */}
       <Stack.Screen name="MainTabs" component={MainTabsNavigator} />
-      <Stack.Screen name="ManageProfile" component={ManageScreen} />
-
 
       {/* Profile */}
       <Stack.Screen name="EditProfile" component={EditProfileScreen} />
@@ -154,6 +166,14 @@ const RootNavigator: React.FC = () => {
       <Stack.Screen name="BecomeCreator" component={BecomeCreatorScreen} />
       <Stack.Screen name="CreatorUpload" component={CreatorUploadScreen} />
       <Stack.Screen name="CreatorDashboard" component={CreatorDashboardScreen} />
+      <Stack.Screen name="MyEvents" component={MyEventsScreen} />
+      <Stack.Screen name="MyRooms" component={MyRoomsScreen} />
+      <Stack.Screen name="Followers" component={FollowersScreen} />
+      <Stack.Screen name="Subscribers" component={SubscribersScreen} />
+      <Stack.Screen name="ContentLikes" component={ContentLikesScreen} />
+      <Stack.Screen name="ContentComments" component={ContentCommentsScreen} />
+      <Stack.Screen name="ContentShares" component={ContentSharesScreen} />
+      <Stack.Screen name="LiveSessions" component={LiveSessionsScreen} />
       <Stack.Screen name="MyProfile" component={MyProfileScreen} />
       <Stack.Screen name="CreateEvent" component={CreateEventScreen} />
       <Stack.Screen name="EventDetail" component={EventDetailScreen} />
@@ -163,6 +183,8 @@ const RootNavigator: React.FC = () => {
 
       {/* Chats */}
       <Stack.Screen name="ChatDetail" component={ChatDetailScreen} />
+      <Stack.Screen name="UserProfile" component={UserProfileScreen} />
+      <Stack.Screen name="ManageProfile" component={ManageScreen} />
 
       {/* Posts (news & events) */}
       <Stack.Screen name="CreatePost" component={CreatePostScreen} options={{ animation: 'slide_from_bottom' }} />

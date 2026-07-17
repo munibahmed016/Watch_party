@@ -13,7 +13,7 @@ export type AdminStackParamList = {
   AdminContent: undefined;
   // Optional filter so the Dashboard's Verified / Banned tiles can land here
   // pre-filtered instead of showing everyone.
-  AdminUsers: { filter?: 'all' | 'verified' | 'banned' | 'admin' } | undefined;
+  AdminUsers: { filter?: 'all' | 'verified' | 'banned' | 'admin' | 'subscribed' } | undefined;
   AdminSubscriptions: undefined;
   AdminCreators: undefined;
   AdminReview: undefined;

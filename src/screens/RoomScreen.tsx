@@ -33,7 +33,7 @@ const ORIGIN = 'https://watchpartylive.com';
 // Bunny Stream pull-zone (CDN) host. Used to build a SYNCABLE HLS url from a
 // Bunny iframe-embed url (the iframe itself is a black box and can't be synced).
 // This is a public hostname (it appears in the video urls), safe to ship.
-const BUNNY_CDN = 'vz-302e6718-16f.b-cdn.net';
+const BUNNY_CDN = 'vz-efc7eb6d-22d.b-cdn.net';
 
 // Bunny movies play through the HLS stream so the host's play / pause / seek
 // stays in sync for everyone. This needs, in the Bunny dashboard (Stream >

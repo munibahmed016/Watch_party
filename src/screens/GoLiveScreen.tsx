@@ -21,6 +21,7 @@ import spacing from '@/constants/spacing';
 import layout from '@/constants/layout';
 import { creatorsApi, LiveKitJoin } from '@/lib/api';
 import { showApiError } from '@/hooks/useApiErrorAlert';
+import LiveComments from '@/components/LiveComments';
 
 async function ensurePermissions(): Promise<boolean> {
   if (Platform.OS !== 'android') return true;
@@ -149,6 +150,62 @@ const Broadcaster: React.FC<{ title: string; onEnd: () => void }> = ({ title, on
   const tracks = useTracks([Track.Source.Camera], { onlySubscribed: false });
   const localCam = tracks.find((t) => t.participant?.isLocal);
 
+  // The `video`/`audio` props on <LiveKitRoom> are supposed to auto-publish
+  // the local camera/mic, but there's a known LiveKit RN SDK issue where that
+  // auto-publish can silently fail (the join happens, but nothing actually
+  // gets published — which is exactly "host goes live but the viewer sees
+  // nothing"). This explicitly (re)enables both once the local participant
+  // is available, as a reliable fallback on top of the declarative props —
+  // purely additive, doesn't change anything else about the flow.
+  useEffect(() => {
+    if (!localParticipant) return;
+    localParticipant.setCameraEnabled(true).catch(() => undefined);
+    localParticipant.setMicrophoneEnabled(true).catch(() => undefined);
+  }, [localParticipant]);
+
+  // ---- Join / leave toast — tells the host who's coming and going ----
+  // LiveKit already gives us the live participants list via useParticipants();
+  // this just diffs it against the previous render to notice arrivals and
+  // departures and show a brief on-screen toast for each, so the host isn't
+  // left guessing who's watching. No backend/notification changes needed —
+  // this is purely a client-side reaction to LiveKit's own real-time state.
+  const [toast, setToast] = useState<{ name: string; kind: 'joined' | 'left' } | null>(null);
+  const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const prevIdentities = useRef<Set<string>>(new Set());
+
+  const showToast = (name: string, kind: 'joined' | 'left') => {
+    if (toastTimer.current) clearTimeout(toastTimer.current);
+    setToast({ name, kind });
+    toastTimer.current = setTimeout(() => setToast(null), 3000);
+  };
+
+  useEffect(() => {
+    const current = new Set(
+      participants.filter((p) => !p.isLocal).map((p) => p.identity)
+    );
+    const prev = prevIdentities.current;
+
+    // Newly joined (skip the very first render — prev starts empty and we
+    // don't want a flood of "joined" toasts for people already in the room).
+    if (prev.size > 0 || current.size > 0) {
+      for (const p of participants) {
+        if (p.isLocal) continue;
+        if (!prev.has(p.identity) && prev.size > 0) {
+          showToast(p.name || 'Someone', 'joined');
+        }
+      }
+      for (const identity of prev) {
+        if (!current.has(identity)) {
+          const left = participants.find((p) => p.identity === identity);
+          showToast(left?.name || 'A viewer', 'left');
+        }
+      }
+    }
+    prevIdentities.current = current;
+  }, [participants]);
+
+  useEffect(() => () => { if (toastTimer.current) clearTimeout(toastTimer.current); }, []);
+
   const confirmEnd = () => {
     Alert.alert('End live', 'Stop broadcasting?', [
       { text: 'Cancel', style: 'cancel' },
@@ -178,6 +235,20 @@ const Broadcaster: React.FC<{ title: string; onEnd: () => void }> = ({ title, on
           <AppText variant="tiny" bold color={colors.white}>{viewers}</AppText>
         </View>
       </View>
+
+      {/* join / leave toast */}
+      {toast && (
+        <View style={styles.joinToast} pointerEvents="none">
+          <Icon name={toast.kind === 'joined' ? 'log-in' : 'log-out'} size={14} color="#fff" style={{ marginRight: 6 }} />
+          <AppText variant="tiny" bold color="#fff">
+            {toast.name} {toast.kind === 'joined' ? 'joined' : 'left'}
+          </AppText>
+        </View>
+      )}
+
+      {/* Instagram-style live comments — sits between the title bar and the
+          controls, doesn't move or replace anything already on screen. */}
+      <LiveComments bottomOffset={170} />
 
       {/* title */}
       <View style={styles.titleBar}>
@@ -214,6 +285,11 @@ const styles = StyleSheet.create({
   liveTag: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#FF0000', paddingHorizontal: 10, paddingVertical: 5, borderRadius: 6 },
   liveDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: colors.white, marginRight: 5 },
   viewerPill: { flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.6)', paddingHorizontal: 10, paddingVertical: 5, borderRadius: 999 },
+  joinToast: {
+    position: 'absolute', top: 100, alignSelf: 'center',
+    flexDirection: 'row', alignItems: 'center',
+    backgroundColor: 'rgba(0,0,0,0.7)', paddingHorizontal: 14, paddingVertical: 8, borderRadius: 999,
+  },
   titleBar: { position: 'absolute', bottom: 110, left: 16, right: 16, backgroundColor: 'rgba(0,0,0,0.4)', padding: 12, borderRadius: 12 },
   controls: { position: 'absolute', bottom: 36, left: 0, right: 0, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 20 },
   ctrlBtn: { width: 52, height: 52, borderRadius: 26, backgroundColor: 'rgba(255,255,255,0.15)', alignItems: 'center', justifyContent: 'center' },
