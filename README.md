@@ -299,14 +299,13 @@ Reinstall pods: `cd ios && pod install`.
 
 ---
 
-## 11. Next steps
+## 11. Backend & Real-Time Services
 
-This project is UI-only. To make it production-ready you'll want to add:
+The mobile app connects to the following services:
 
-- API client (axios / fetch wrapper)
-- State (Zustand / Redux Toolkit) — empty `src/store/` is ready
-- Auth persistence (`@react-native-async-storage/async-storage` already installed)
-- Real video player (`react-native-video`)
-- Push notifications (Firebase / OneSignal)
+- **REST API**: Authentication, user profiles, room lifecycle, social graph, content catalog, and admin controls.
+- **Socket.IO**: Real-time room video synchronization (play, pause, seek, track switching) and messaging.
+- **LiveKit WebRTC**: Sub-second interactive live broadcasting and audio/video streaming.
+- **Bunny Stream CDN**: Video transcoding and adaptive HLS delivery with resumable TUS uploads.
 
-Have fun building 🎬
+Full API endpoint specifications and Socket.IO event payloads are documented in [API_DOCUMENTATION.md](file:///Users/mac/Desktop/All%20Projects/Watch_party/API_DOCUMENTATION.md).

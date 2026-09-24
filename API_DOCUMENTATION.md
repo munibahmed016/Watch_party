@@ -1,6 +1,6 @@
-# WatchParty Live — Complete API Documentation
+# WatchParty Live — API Documentation
 
-Comprehensive technical documentation for the **WatchParty Live** backend services, covering the REST API, Socket.IO real-time synchronization, LiveKit WebRTC audio/video streaming, and Bunny Stream video delivery infrastructure.
+Technical specification and API reference for the WatchParty Live services, covering REST endpoints, Socket.IO real-time synchronization, LiveKit WebRTC audio/video streaming, and Bunny Stream video delivery infrastructure.
 
 ---
 
@@ -1081,7 +1081,3 @@ The application handles deep links via the custom scheme `watchpartylive://` and
 | **Join Live Broadcast** | `watchpartylive://live/:sessionId` | `https://watchpartylive.app/live/:sessionId` |
 | **View Community Post** | `watchpartylive://post/:id` | `https://watchpartylive.app/post/:id` |
 | **Verify Email / Reset**| `watchpartylive://verify?code=...&email=...`| `https://watchpartylive.app/verify?code=...` |
-
----
-
-*Documentation maintained for WatchParty Live. Generated based on active production contracts.*

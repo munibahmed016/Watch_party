@@ -1,26 +1,3 @@
-// src/components/AppButton.tsx
-//
-// UNIVERSAL button for the whole app. Replaces ad-hoc inline buttons.
-// Implements the WatchPartyLive gradient SYSTEM (per client feedback):
-//
-//   Variant      Use case                         Look
-//   ─────────    ──────────────────────────────   ────────────────────────────
-//   'primary'    main CTA (Watch, Create, Save)    135° pink→indigo gradient + glow
-//   'secondary'  secondary action                 glass fill + hairline border
-//   'outline'    tertiary / cancel                transparent + white border
-//   'white'      on-image / on-gradient action    solid white, pink text
-//   'danger'     destructive                      solid red
-//
-//   Size: sm (40) / md (48) / lg (54)
-//
-// Text NEVER cuts: content area uses flexShrink + proper padding, single line
-// with ellipsis only if truly too long.
-//
-// Usage:
-//   <AppButton title="Watch Together" icon="play" onPress={...} />
-//   <AppButton title="Cancel" variant="outline" onPress={...} />
-//   <AppButton title="Save" variant="primary" loading={saving} fullWidth />
-
 import React from 'react';
 import {
   TouchableOpacity, StyleSheet, ViewStyle, StyleProp, ActivityIndicator, View,

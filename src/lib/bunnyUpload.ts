@@ -1,13 +1,4 @@
-// src/lib/bunnyUpload.ts
-//
-// Uploads a local video file straight to Bunny Stream using the presigned
-// TUS auth returned by the backend. Uses XMLHttpRequest (NOT fetch+blob),
-// because React Native's fetch() cannot reliably turn a local file:// URI
-// into a Blob — that was causing "Network request failed".
-//
-// XHR can send a { uri, type, name } file object directly, which RN's
-// networking layer streams from disk. This is the reliable RN approach.
-
+// TUS upload client for Bunny Stream
 type UploadAuth = {
   endpoint: string;            // https://video.bunnycdn.com/tusupload
   libraryId: string;
@@ -16,11 +7,7 @@ type UploadAuth = {
   authorizationExpire: number;
 };
 
-// Small helper: a single XHR request returning a Promise.
-// `timeoutMs` is optional — pass 0/undefined to disable the timeout entirely,
-// which matters for the actual file upload (large movies can legitimately
-// take many minutes on a mobile connection; a fixed 2-minute timeout there
-// was aborting every upload above a couple hundred MB).
+// XHR request helper with upload progress tracking
 function xhr(
   method: string,
   url: string,
@@ -57,7 +44,6 @@ export async function uploadToBunny(
   onProgress?: (pct: number) => void,
   fileSize?: number,
 ): Promise<void> {
-  // TUS metadata (base64-encoded values)
   const meta = `filetype ${b64(fileType)},title ${b64(fileName)}`;
 
   const baseHeaders = {
@@ -67,13 +53,7 @@ export async function uploadToBunny(
     LibraryId: auth.libraryId,
   };
 
-  // 1) TUS "create" — announce the upload, get the upload URL.
-  //    IMPORTANT: Upload-Length must be the file's REAL byte size. Sending a
-  //    placeholder (e.g. "1") made Bunny allocate a 1-byte slot — small test
-  //    files happened to look fine, but any real movie either got rejected or
-  //    silently truncated after the first byte. When the picker doesn't give
-  //    us a size, fall back to the TUS "deferred length" extension instead of
-  //    lying about the length.
+  // 1) TUS initialization request
   const createHeaders: Record<string, string> = {
     ...baseHeaders,
     'Tus-Resumable': '1.0.0',
@@ -92,10 +72,7 @@ export async function uploadToBunny(
   }
   const location = createRes.getHeader('Location') || auth.endpoint;
 
-  // 2) Send the actual file. RN streams it from disk via the { uri } object.
-  //    No fixed timeout here — large movies over a slow mobile connection can
-  //    legitimately take a long time; the upload should only fail on an actual
-  //    network error, not an arbitrary clock.
+  // 2) Send file data via PATCH
   const fileObj: any = { uri: fileUri, type: fileType, name: fileName };
 
   const patchHeaders: Record<string, string> = {

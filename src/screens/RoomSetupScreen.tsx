@@ -52,7 +52,7 @@ const RoomSetupScreen = () => {
       <ScrollView contentContainerStyle={{ padding: spacing.lg, paddingBottom: 140 }} showsVerticalScrollIndicator={false}>
         <GradientText variant="h1" style={styles.title}>Room Setup</GradientText>
 
-        {/* Gradient poster placeholder (no dummy stock image) */}
+        {/* Video poster banner */}
         <View style={styles.posterWrap}>
           <LinearGradient colors={['#1C1C34', '#14142A']} style={StyleSheet.absoluteFillObject} />
           <View style={styles.posterIcon}>

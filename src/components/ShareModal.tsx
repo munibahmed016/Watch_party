@@ -1,12 +1,3 @@
-// src/components/ShareModal.tsx
-//
-// FIXES:
-//   - "More Options" no longer cut off (proper width allocation, full label visible)
-//   - 4-column grid with consistent spacing
-//   - WhatsApp / Instagram / Snapchat / Messenger deep links with copy-to-clipboard fallback
-//   - Native iOS share sheet for "More Options"
-//   - Tap outside to dismiss
-
 import React from 'react';
 import {
   View, StyleSheet, Modal, Pressable, Image, TouchableOpacity, Share, Linking, Alert,

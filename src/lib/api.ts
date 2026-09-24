@@ -379,8 +379,6 @@ export type AdminUser = {
   isAdmin: boolean;
   isBanned: boolean;
   planId: string | null;
-  // The REAL entitlement field (BASIC/PRO/ADVANCE) — use this to show a
-  // user's actual plan; `plan` (below) is the legacy/unused table relation.
   planTier: 'BASIC' | 'PRO' | 'ADVANCE';
   subscriptionExpiresAt: string | null;
   plan?: { name: string } | null;
@@ -402,8 +400,6 @@ export type AdminPlan = {
   subscriberCount: number;
 };
 
-// The REAL subscription tiers (BASIC/PRO/ADVANCE) — what the app actually
-// uses for entitlements. `tier` is stable; everything else is admin-editable.
 export type AdminPlanTier = {
   tier: 'BASIC' | 'PRO' | 'ADVANCE';
   name: string;
@@ -861,8 +857,7 @@ export const adminApi = {
   removeSubscription: (userId: string) =>
     request<{ user: AdminUser }>('/admin/subscriptions/remove', { method: 'POST', body: { userId } }),
 
-  // REAL subscription tiers (BASIC/PRO/ADVANCE) — the system actually used
-  // for entitlements app-wide. Use these, not the legacy plan methods above.
+  // Subscription tiers
   listSubscriptionTiers: () => request<{ plans: AdminPlanTier[] }>('/admin/subscription-tiers'),
   updateSubscriptionTier: (tier: string, body: Partial<{ price: number; durationDays: number; features: string[]; isActive: boolean }>) =>
     request<{ plans: AdminPlanTier[] }>(`/admin/subscription-tiers/${tier}`, { method: 'PATCH', body }),
@@ -879,7 +874,7 @@ export const adminApi = {
 };
 
 // =====================================================================
-// CREATORS API (Phase 1+2+3) — profile, follow/subscribe, content, live, events
+// Creators API
 // =====================================================================
 
 export type CreatorCategory =
