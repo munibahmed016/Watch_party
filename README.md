@@ -3,7 +3,9 @@
 A React Native mobile app for watching streams and podcasts together with friends.
 Bare RN (no Expo). Works on iOS and Android.
 
-> **Stack**: React Native 0.81 · React 19 · TypeScript · React Navigation v7 · `react-native-linear-gradient` · `react-native-vector-icons` · `react-native-image-picker`
+> **Stack**: React Native 0.81 · React 19 · TypeScript · React Navigation v7 · `react-native-linear-gradient` · `react-native-vector-icons` · `react-native-image-picker` · `Socket.io` · `LiveKit`
+> 
+> 📖 **API Documentation**: See [API_DOCUMENTATION.md](file:///Users/mac/Desktop/All%20Projects/Watch_party/API_DOCUMENTATION.md) for full REST, Socket.IO, WebRTC, and Bunny Stream specs.
 
 ---
 
